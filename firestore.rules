@@ -3,7 +3,7 @@ service cloud.firestore {
   match /databases/{database}/documents {
     // Reemplazá por el correo con el que vas a ingresar como profesora.
     function esProfe() {
-      return request.auth != null && request.auth.token.email == "TU_CORREO@gmail.com";
+      return request.auth != null && request.auth.token.email == "sotelo.m.d.lujan@gmail.com";
     }
     // Material y tareas: los alumnos las leen sin iniciar sesión.
     match /materials/{id} { allow read: if true; allow write: if esProfe(); }
