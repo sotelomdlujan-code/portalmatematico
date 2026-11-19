@@ -2,8 +2,8 @@
 
 Plataforma para una profesora de matemática de secundaria: planificaciones de clases, planificación de evaluaciones, y material y tareas para los alumnos.
 
-- **Profesora** (con usuario y contraseña): ve y edita todo: planificaciones, evaluaciones, material y tareas.
-- **Alumnos** (sin cuenta, solo con el link): ven únicamente *Material* y *Tareas*.
+- **Profesora** (con usuario y contraseña): organiza su trabajo en **escuelas** y **cursos**, y en cada curso ve y edita planificaciones, evaluaciones, material y tareas.
+- **Alumnos** (sin cuenta, con el **link de su curso**): ven únicamente el *Material* y las *Tareas* de ese curso. No pueden ver otros cursos.
 - Los archivos se comparten con **enlaces** (Google Drive, por ejemplo).
 
 Todo es gratis: GitHub Pages aloja la página y Firebase guarda los datos.
@@ -54,6 +54,19 @@ Al ingresar como docente aparece la pestaña **Generar examen**:
 > Los ejercicios se arman con plantillas y números al azar, y las respuestas se calculan automáticamente. Conviene siempre darles una mirada antes de imprimir, y ajustar el año o los temas según lo que dieron en clase.
 
 **Si ya habías subido la versión anterior:** reemplazá `index.html` y `app.js`, y agregá el archivo nuevo `gen.js`. `config.js` y las reglas de Firebase no cambian.
+
+## 🏫 Escuelas, cursos y link para alumnos
+
+En el panel de la izquierda (al ingresar como docente) están los selectores **Escuela** y **Curso**:
+
+1. **＋** crea una escuela (puede ser “Clases particulares”) o un curso dentro de la escuela elegida. **✏️** renombra y **🗑** borra.
+2. Todo lo que cargues (planificaciones, evaluaciones, material, tareas) queda guardado **en el curso elegido**.
+3. Tocá **🔗 Link para alumnos** para copiar el link de ese curso y pasárselo a los chicos (por WhatsApp, Classroom, etc.). Cada curso tiene su propio link.
+4. El generador de exámenes completa solo la escuela y el curso; “Guardar en Evaluaciones” lo guarda en el curso elegido.
+
+> Los links no se pueden adivinar, pero **cualquiera que tenga el link de un curso puede ver su material y tareas**. No pongas ahí datos privados de los alumnos. Si un link se difunde de más, creá un curso nuevo y borrá el anterior.
+
+**Reglas de Firebase:** esta versión usa reglas nuevas (`firestore.rules`). Hay que pegarlas de nuevo en Firestore → pestaña **Reglas** → **Publicar**.
 
 ## Cómo compartir archivos (PDF, libros, guías)
 

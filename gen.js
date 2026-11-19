@@ -148,9 +148,10 @@ function renderGen(){
   $('#g-pe').onclick=()=>{document.body.classList.remove('pk');window.print()};
   $('#g-pk').onclick=()=>{document.body.classList.add('pk');window.print();setTimeout(()=>document.body.classList.remove('pk'),500)};
   $('#g-sv').onclick=async()=>{readCfgSafe();
+    if(!courseId){alert('Primero elegí o creá un curso para guardar el examen.');return}
     try{const{sets,cur,...cfgG}=G;
-      await fs.collection('exams').add({title:G.title||'Examen',curso:G.curso,fecha:G.fecha,tipo:'Escrita',contenidos:G.temas.map(tn).join(', '),criterios:`${G.n} ejercicios, ${num(G.puntos)} puntos en total. Dificultad: ${DIF[G.dif]}.`,notas:'',files:[],created:Date.now(),updated:Date.now(),ejercicios:JSON.stringify({sets,G:cfgG})});
-      alert('Guardado en Evaluaciones. Ahí vas a poder reabrirlo con “Abrir examen”.')}
+      await col('exams').add({title:G.title||'Examen',fecha:G.fecha,tipo:'Escrita',contenidos:G.temas.map(tn).join(', '),criterios:`${G.n} ejercicios, ${num(G.puntos)} puntos en total. Dificultad: ${DIF[G.dif]}.`,notas:'',files:[],created:Date.now(),updated:Date.now(),ejercicios:JSON.stringify({sets,G:cfgG})});
+      alert('Guardado en Evaluaciones de este curso. Ahí vas a poder reabrirlo con “Abrir examen”.')}
     catch(e){alert('No se pudo guardar. Revisá tu conexión.')}};
 }
 function readCfgSafe(){try{const s=G.sets,c=G.cur;readCfg();G.sets=s;G.cur=c}catch(e){}}

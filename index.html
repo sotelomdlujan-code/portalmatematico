@@ -110,6 +110,12 @@ label.chk{display:flex;gap:8px;align-items:center;font-weight:600;margin-top:12p
 @media (max-width:760px){.sheet{padding:20px 16px}}
 @media print{aside,.top,.lead,.gcfg,.noprint{display:none!important}body{background:#fff}.app{display:block}main{padding:0}.sheet{box-shadow:none;margin:0;padding:0}
 body.pk .sheet-exam{display:none}body:not(.pk) .sheet-key{display:none}}
+.picker{margin:0 0 18px;padding:0 4px}.picker label{font-size:.78rem;color:var(--mu);margin:10px 0 4px}
+.pk{display:flex;gap:4px;align-items:center}.pk select{flex:1;min-width:0;padding:8px 10px;font-size:.9rem}
+.ib{flex:none;width:32px;height:32px;border:1px solid var(--bd);background:var(--sf);color:var(--tx);border-radius:10px;cursor:pointer;font-size:.85rem;padding:0}
+.ib:hover{background:var(--sf2)}.ib:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
+.btn.lnk{width:100%;margin-top:12px;font-size:.85rem}.btn:disabled{opacity:.5;cursor:default}
+@media (max-width:760px){.picker{padding:0}}
 </style>
 </head>
 <body>
@@ -117,6 +123,7 @@ body.pk .sheet-exam{display:none}body:not(.pk) .sheet-key{display:none}}
 <aside>
   <div class="brand"><div class="mark">π</div><h1>Aula de<br>Matemática</h1></div>
   <p class="role" id="role">&nbsp;</p>
+  <div id="picker" class="picker"></div>
   <nav id="nav"></nav>
   <div class="auth" id="auth"></div>
 </aside>

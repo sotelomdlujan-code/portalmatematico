@@ -1,15 +1,24 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Reemplazá por el correo con el que vas a ingresar como profesora.
     function esProfe() {
       return request.auth != null && request.auth.token.email == "sotelo.m.d.lujan@gmail.com";
     }
-    // Material y tareas: los alumnos las leen sin iniciar sesión.
-    match /materials/{id} { allow read: if true; allow write: if esProfe(); }
-    match /tasks/{id}     { allow read: if true; allow write: if esProfe(); }
-    // Planificaciones y evaluaciones: solo la profesora.
-    match /plans/{id}     { allow read, write: if esProfe(); }
-    match /exams/{id}     { allow read, write: if esProfe(); }
+    // Escuelas: solo la profesora.
+    match /spaces/{id} { allow read, write: if esProfe(); }
+
+    // Cursos: un alumno solo puede abrir el curso cuyo link (id) conoce.
+    // No puede listar los demás cursos.
+    match /courses/{cid} {
+      allow get: if true;
+      allow list, write: if esProfe();
+
+      // Material y tareas: se leen con el link del curso.
+      match /materials/{id} { allow read: if true; allow write: if esProfe(); }
+      match /tasks/{id}     { allow read: if true; allow write: if esProfe(); }
+      // Planificaciones y evaluaciones: solo la profesora.
+      match /plans/{id}     { allow read, write: if esProfe(); }
+      match /exams/{id}     { allow read, write: if esProfe(); }
+    }
   }
 }
