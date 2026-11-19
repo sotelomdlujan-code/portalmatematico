@@ -127,7 +127,7 @@ function openLogin(){
   $('#lx').onclick = () => $('#ldlg').close();
   const go = async () => {
     try { await auth.signInWithEmailAndPassword($('#em').value.trim(), $('#pw').value); $('#ldlg').close(); }
-    catch(e){ $('#er').textContent = 'Correo o contraseña incorrectos.'; }
+    catch(e){ console.error(e); $('#er').textContent = 'No se pudo ingresar (' + (e.code || e.message) + ').'; }
   };
   $('#go').onclick = go;
   $('#pw').onkeydown = e => { if(e.key==='Enter') go(); };
