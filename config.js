@@ -1,4 +1,3 @@
-// Datos de conexión del proyecto de Firebase (portalmatematico).
 window.FIREBASE_CONFIG = {
   apiKey: "AIzaSyAQ4jjVW6BJEbb5C8ULT377X0oeJbFgevM",
   authDomain: "portalmatematico-b7b51.firebaseapp.com",
