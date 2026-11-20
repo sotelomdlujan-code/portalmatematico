@@ -47,16 +47,17 @@ function renderNav(){
 
 function render(){
   if(!visible().includes(tab)) tab = visible()[0];
+  document.body.dataset.tab = tab;
   renderNav();
   $('#role').textContent = canEdit() ? 'Panel de la profesora' : (studentCourse ? `${studentCourse.escuela || ''} · ${studentCourse.name}` : 'Espacio de estudio');
   if(tab==='gen'){ renderGen(); return; }
   if(!courseId){
     if(canEdit()){
       const sinEsc = !spaces.length;
-      $('#main').innerHTML = `<div class="empty"><div class="big">${sinEsc ? 'Empecemos creando tu primera escuela' : 'Ahora creá un curso'}</div>${sinEsc ? 'Puede ser una escuela, un colegio o “Clases particulares”.' : 'Cada curso tiene su propio material, tareas y link para los alumnos.'}<br><br><button class="btn" id="ob">${sinEsc ? 'Crear escuela' : 'Crear curso'}</button></div>`;
+      $('#main').innerHTML = `<div class="empty">${LAPI}<div class="big">${sinEsc ? 'Empecemos creando tu primera escuela' : 'Ahora creá un curso'}</div>${sinEsc ? 'Puede ser una escuela, un colegio o “Clases particulares”.' : 'Cada curso tiene su propio material, tareas y link para los alumnos.'}<br><br><button class="btn" id="ob">${sinEsc ? 'Crear escuela' : 'Crear curso'}</button></div>`;
       $('#ob').onclick = () => sinEsc ? addSpace() : addCourse();
     } else {
-      $('#main').innerHTML = `<div class="empty"><div class="big">${badLink ? 'Este link no es válido' : 'Entrá con el link de tu curso'}</div>${badLink ? 'Pedile a tu profesora que te lo mande de nuevo.' : 'Tu profesora te pasa un link para ver el material y las tareas de tu curso.'}</div>`;
+      $('#main').innerHTML = `<div class="empty">${LAPI}<div class="big">${badLink ? 'Este link no es válido' : 'Entrá con el link de tu curso'}</div>${badLink ? 'Pedile a tu profesora que te lo mande de nuevo.' : 'Tu profesora te pasa un link para ver el material y las tareas de tu curso.'}</div>`;
     }
     return;
   }
@@ -64,7 +65,7 @@ function render(){
   let h = `<div class="top"><h2>${S.label}</h2><div class="tools">`;
   if(canEdit()) h += `<button class="btn" id="add">Agregar ${tab==='plans'?'planificación':tab==='exams'?'evaluación':tab==='tasks'?'tarea':'material'}</button>`;
   h += `</div></div><p class="lead">${S.lead}</p>`;
-  if(!list.length) h += `<div class="empty"><div class="big">${S.empty}</div>${canEdit() ? 'Usá el botón de arriba para crear la primera.' : 'Cuando tu profesora publique algo, lo vas a ver acá.'}</div>`;
+  if(!list.length) h += `<div class="empty">${LAPI}<div class="big">${S.empty}</div>${canEdit() ? 'Usá el botón de arriba para crear la primera.' : 'Cuando tu profesora publique algo, lo vas a ver acá.'}</div>`;
   list.forEach(d => {
     const dt = d.fecha || d.entrega;
     h += `<details class="item k-${tab}"><summary><span class="badge dot">${S.ico}</span><div><h3>${esc(d.title||'Sin título')}</h3><div class="sub">`;
@@ -126,7 +127,7 @@ function openForm(d){
 }
 
 function openLogin(){
-  $('#lfrm').innerHTML = `<h3 style="margin:0 0 6px;font:600 1.5rem var(--fd)">Ingreso docente</h3>
+  $('#lfrm').innerHTML = `<div class="lh">${LAPI}<div><h3>Ingreso docente</h3><p>¡Hola, profe!</p></div></div>
     <label>Correo</label><input id="em" type="email" autocomplete="username">
     <label>Contraseña</label><input id="pw" type="password" autocomplete="current-password">
     <div class="err" id="er"></div>
