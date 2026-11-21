@@ -4,6 +4,12 @@ service cloud.firestore {
     function esProfe() {
       return request.auth != null && request.auth.token.email == "sotelo.m.d.lujan@gmail.com";
     }
+    // Biblioteca de PDF y libros: solo la profesora.
+    match /library/{id} {
+      allow read, write: if esProfe();
+      match /chunks/{c} { allow read, write: if esProfe(); }
+    }
+
     // Escuelas: solo la profesora.
     match /spaces/{id} { allow read, write: if esProfe(); }
 

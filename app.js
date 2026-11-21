@@ -8,6 +8,7 @@ const SECTIONS = {
     ['tipo','Tipo','select',['Escrita','Oral','Trabajo práctico','Recuperatorio']],
     ['contenidos','Contenidos a evaluar','area'],['criterios','Criterios de evaluación','area'],['notas','Notas y ponderación','area']]},
   gen: {label:'Generar examen', ico:'🧮', teacher:true, lead:'', fields:[]},
+  lib: {label:'Biblioteca', ico:'📖', teacher:true, lead:'', fields:[]},
   materials: {label:'Material', ico:'📚', teacher:false, lead:'Apuntes, libros y recursos para estudiar.', empty:'Todavía no hay material', fields:[
     ['title','Título','text'],['descripcion','Descripción','area']]},
   tasks: {label:'Tareas', ico:'🌟', teacher:false, lead:'Lo que tenés para resolver y la fecha de entrega.', empty:'Todavía no hay tareas', fields:[
@@ -51,6 +52,7 @@ function render(){
   renderNav();
   $('#role').textContent = canEdit() ? 'Panel de la profesora' : (studentCourse ? `${studentCourse.escuela || ''} · ${studentCourse.name}` : 'Espacio de estudio');
   if(tab==='gen'){ renderGen(); return; }
+  if(tab==='lib'){ if(typeof renderLib==='function') renderLib(); else $('#main').innerHTML = '<div class="empty"><div class="big">Falta un archivo</div>Para usar la Biblioteca subí a GitHub el archivo <b>biblioteca.js</b> y el <b>index.html</b> nuevo, y recargá con Ctrl + F5.</div>'; return; }
   if(!courseId){
     if(canEdit()){
       const sinEsc = !spaces.length;
@@ -146,7 +148,7 @@ function subscribe(){
   unsubs.forEach(u => u()); unsubs = [];
   data = {plans:[],exams:[],materials:[],tasks:[]};
   if(courseId){
-    visible().filter(k => k!=='gen').forEach(k => {
+    visible().filter(k => k!=='gen' && k!=='lib').forEach(k => {
       unsubs.push(col(k).orderBy('created','desc').onSnapshot(
         s => { data[k] = s.docs.map(x => ({id:x.id, ...x.data()})); render(); },
         err => { console.error(err); $('#role').textContent = 'No se pudieron cargar los datos'; }
@@ -243,7 +245,7 @@ if(!configured){
   firebase.initializeApp(cfg);
   auth = firebase.auth(); fs = firebase.firestore();
   auth.onAuthStateChanged(u => {
-    user = u; tab = u ? 'plans' : 'materials';
+    user = u; tab = u ? 'plans' : 'materials'; if(typeof libReset==='function') libReset();
     metaUnsubs.forEach(f => f()); metaUnsubs = [];
     unsubs.forEach(f => f()); unsubs = [];
     subbed = null; studentCourse = null; badLink = false; courseId = ''; spaces = []; courses = []; loaded = {sp:false, cu:false};
