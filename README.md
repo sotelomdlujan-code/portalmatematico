@@ -14,7 +14,7 @@ Todo es gratis: GitHub Pages aloja la página y Firebase guarda los datos.
 
 1. Entrá a [github.com](https://github.com) y creá una cuenta si no tenés.
 2. Tocá **New repository** (el botón verde). Nombre sugerido: `aula-matematica`. Dejalo **Public**.
-3. En el repositorio nuevo, elegí **uploading an existing file** y arrastrá todos los archivos de esta carpeta (`index.html`, `app.js`, `gen.js`, `config.js`, `firestore.rules`, `.nojekyll` y este README). Tocá **Commit changes**.
+3. En el repositorio nuevo, elegí **uploading an existing file** y arrastrá todos los archivos de esta carpeta (`index.html`, `app.js`, `gen.js`, `biblioteca.js`, `guias.js`, `config.js`, `firestore.rules`, `.nojekyll` y este README). Tocá **Commit changes**.
 4. Andá a **Settings → Pages**. En *Branch* elegí `main` y la carpeta `/ (root)`. Guardá.
 5. En un minuto tu página va a estar en: `https://TU-USUARIO.github.io/aula-matematica/`
 
@@ -65,16 +65,29 @@ El generador cubre **35 temas** de 1.º a 6.º año (borrador basado en los NAP 
 
 ## 📖 Biblioteca de PDF y libros
 
-En el menú de la izquierda, **Biblioteca** guarda tus PDF y libros y busca por tema en todos a la vez. **Es solo para vos**: los alumnos no la ven.
+En el menú de la izquierda, **Biblioteca** guarda tus PDF y libros y busca por tema en todos a la vez. Los alumnos no la ven; solo las personas que vos habilites (ver más abajo).
 
 1. **Agregar PDF:** elegí uno o varios archivos. La página lee el texto de cada página. Si el PDF es una imagen (escaneado o con letras dibujadas), te ofrece leerlo con **OCR**, que tarda varios minutos y necesita internet.
 2. **Buscar:** elegí un tema de la lista (con sus sinónimos) o escribí lo que buscás. Se puede usar “comillas” para una frase exacta y elegir si deben aparecer todas las palabras o alguna. También podés elegir en qué documentos buscar.
 3. **Resultados:** aparecen agrupados por libro y por página, con las palabras encontradas resaltadas. Cada resultado tiene **Ver la página** (muestra el PDF original) y **Ver texto completo**.
 4. **Imprimir:** marcá las páginas que te sirven y tocá “Imprimir la selección” para armar un apunte.
 
-Cómo se guarda: el **texto** queda en tu base de datos (Firestore) y se puede consultar desde cualquier dispositivo; el **PDF original** queda solo en el navegador donde lo cargaste (el plan gratis de Firebase no permite guardar archivos). Desde otro dispositivo vas a ver el texto, pero no la página dibujada.
+Cómo se guarda: el **texto** y el **PDF original** (hasta 20 MB por archivo) quedan en tu base de datos (Firestore), así que están disponibles desde cualquier dispositivo. Si un PDF pesa más, solo se guarda el texto. Los libros cargados antes de esta versión tienen el botón **☁️ Guardar PDF** (hay que tocarlo desde el navegador donde los cargaste).
 
-**Reglas de Firebase:** esta versión agrega permisos para la biblioteca. Pegá de nuevo el contenido de `firestore.rules` en Firestore → **Reglas** → **Publicar**.
+### 👥 Compartir la biblioteca (solo lectura)
+
+Al final de la pantalla Biblioteca está **Compartir la biblioteca**: agregás el correo de cada persona que quieras habilitar. Esa persona entra a la página, toca **Ingresar → Es mi primera vez**, crea su cuenta con ese correo y confirma el mail que le llega. Después ve solamente la Biblioteca: puede **buscar, ver y descargar** PDF, pero no agregar, cambiar ni borrar nada (las reglas de Firebase lo impiden). Para quitar el acceso, tocá **Quitar**.
+
+## 📑 Guías para tus alumnos
+
+La pestaña **Guías** arma un PDF nuevo con fragmentos de tus libros:
+
+1. En la **Biblioteca** buscá un tema y tocá **➕ A la guía** (o marcá varias páginas y tocá “A la guía”). También podés escribir rangos, como `12-15, 20`, en la pestaña Guías.
+2. En **Guías** ordenás las páginas, le ponés título y elegís si lleva carátula.
+3. **Guardar en mis guías** la deja en la nube; **Solo descargar** te baja el PDF.
+4. En “Mis guías” tocá **Compartir con un curso**: aparece en el *Material* de ese curso con el botón “Descargar guía (PDF)”.
+
+**Reglas de Firebase (importante):** esta versión cambió `firestore.rules`. Pegalas de nuevo en Firestore → **Reglas** → **Publicar**. Además, en `config.js` está `TEACHER_EMAIL`: debe ser tu correo.
 
 ## 🖼️ Figuras, recordatorios y consignas
 

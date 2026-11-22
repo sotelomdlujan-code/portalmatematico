@@ -5,3 +5,6 @@ window.FIREBASE_CONFIG = {
   projectId: "portalmatematico-b7b51",
   appId: "1:516023568213:web:5a9f2d07d6ebc84f0ed1dc"
 };
+
+// Correo de la profesora (el mismo que figura en firestore.rules).
+window.TEACHER_EMAIL = "sotelo.m.d.lujan@gmail.com";

@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Aula de Matemática</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27%3E%3Ctext y=%27.9em%27 font-size=%2790%27%3E📐%3C/text%3E%3C/svg%3E">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Nunito+Sans:wght@400;600;700&family=Patrick+Hand&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Nunito+Sans:wght@400;600;700&display=swap">
 <style>
 :root{--bg:#fbf7ec;--grid:rgba(110,155,205,.26);--sf:#ffffff;--sf2:#fffdf6;--tx:#26324d;--mu:#5d6783;--bd:#cdd5e6;--ac:#3b5bdb;--acx:#ffffff;--sh:0 2px 0 rgba(38,50,77,.1);--dg:#c2255c;--ink:#26324d;--board:#2c4a3e;--chalk:#f6f3e8;--wood:#b98a52;--hl:#ffe066;--margin:rgba(214,51,108,.32);--plans-bg:#dbe4ff;--plans-ink:#2f4ac0;--plans-hl:#bac8ff;--exams-bg:#ffe0e6;--exams-ink:#c2255c;--exams-hl:#ffc9d6;--materials-bg:#d3f5dc;--materials-ink:#2b8a3e;--materials-hl:#b2f2bb;--tasks-bg:#fff0b3;--tasks-ink:#a65e00;--tasks-hl:#ffe066;
 --fd:"Patrick Hand","Segoe Print","Chalkboard SE","Comic Sans MS",cursive;--fx:"Fraunces",Georgia,"Times New Roman",serif;--fb:"Nunito Sans","Segoe UI",system-ui,sans-serif;--doodles:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='420' height='420' viewBox='0 0 420 420'%3E%3Cg fill='none' stroke='%233b5bdb' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round' opacity='.2'%3E%3Cpath d='M300 170 l34 -58 l34 58 z'/%3E%3Ccircle cx='90' cy='200' r='20'/%3E%3Cpath d='M240 330 h30 M255 315 v30'/%3E%3Cpath d='M40 290 q12 -18 24 0 t24 0 t24 0'/%3E%3Cpath d='M360 360 l6 14 15 2 -11 10 3 15 -13 -8 -13 8 3 -15 -11 -10 15 -2z'/%3E%3Cpath d='M150 60 h36 M150 72 h36'/%3E%3C/g%3E%3Cg font-family='Georgia,serif' font-size='46' fill='%233b5bdb' opacity='.16'%3E%3Ctext x='40' y='100'%3E%CF%80%3C/text%3E%3Ctext x='310' y='70'%3E%E2%88%9A%3C/text%3E%3Ctext x='175' y='240'%3E%E2%88%91%3C/text%3E%3Ctext x='335' y='300'%3E%C3%B7%3C/text%3E%3Ctext x='60' y='385'%3E%25%3C/text%3E%3Ctext x='235' y='405'%3E%E2%88%9E%3C/text%3E%3Ctext x='120' y='150'%3E%E2%89%A0%3C/text%3E%3C/g%3E%3C/svg%3E");
@@ -114,89 +114,50 @@ body.pk .sheet-exam{display:none}body:not(.pk) .sheet-key{display:none}}
 .btn.lnk{width:100%;margin-top:12px;font-size:.85rem}.btn:disabled{opacity:.5;cursor:default}
 @media (max-width:760px){.picker{padding:0}}
 
-/* ===== Tema: cuaderno y pizarrón ===== */
-body{--kc:var(--plans-ink);--kb:var(--plans-bg);--kh:var(--plans-hl);background-color:var(--bg);background-image:var(--doodles),linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);background-size:420px 420px,26px 26px,26px 26px;font-size:17px}
+/* ===== Tema simple y limpio ===== */
+body{--kc:var(--plans-ink);--kb:var(--plans-bg);--kh:var(--plans-hl);background:var(--bg);font-size:16px}
 body[data-tab=exams]{--kc:var(--exams-ink);--kb:var(--exams-bg);--kh:var(--exams-hl)}
-body[data-tab=materials]{--kc:var(--materials-ink);--kb:var(--materials-bg);--kh:var(--materials-hl)}
+body[data-tab=materials],body[data-tab=lib],body[data-tab=guides]{--kc:var(--materials-ink);--kb:var(--materials-bg);--kh:var(--materials-hl)}
 body[data-tab=tasks],body[data-tab=gen]{--kc:var(--tasks-ink);--kb:var(--tasks-bg);--kh:var(--tasks-hl)}
-.app{grid-template-columns:300px 1fr;max-width:1180px}
-/* pizarrón */
-aside{background-color:var(--board);background-image:linear-gradient(135deg,rgba(255,255,255,.08),transparent 45%),radial-gradient(rgba(255,255,255,.05) 1px,transparent 1.6px);background-size:auto,9px 9px;color:var(--chalk);margin:18px 0 18px 16px;padding:20px 16px 14px;border:10px solid var(--wood);border-radius:20px;box-shadow:inset 0 0 0 2px rgba(255,255,255,.1),inset 0 0 70px rgba(0,0,0,.28),0 6px 0 rgba(38,50,77,.18);position:static}
-@media (min-width:761px) and (min-height:900px){aside{position:sticky;top:14px;max-height:calc(100vh - 28px);overflow-y:auto}}
-.mark{background:transparent;border:3px dashed var(--chalk);color:var(--chalk);font:400 1.7rem/1 var(--fd)}
-.brand h1{color:var(--chalk);font:400 1.65rem/1.05 var(--fd);letter-spacing:0}
-.role{color:rgba(246,243,232,.78);margin-left:0;font-size:.9rem}
-nav button{color:var(--chalk);font:400 1.2rem var(--fd);border-radius:14px;padding:9px 14px}
-nav button:hover{background:rgba(255,255,255,.08)}
-nav button.on{background:rgba(255,255,255,.13);box-shadow:none;outline:2px dashed rgba(246,243,232,.6);outline-offset:-3px}
-nav button .n{color:rgba(246,243,232,.7)}
-nav button .dot{border-radius:50%;border:2px solid rgba(0,0,0,.35)}
-nav button:focus-visible,aside .btn:focus-visible,aside select:focus-visible,aside .ib:focus-visible{outline:3px solid var(--chalk);outline-offset:2px}
-.picker label{color:rgba(246,243,232,.85);font:400 1.05rem var(--fd);margin:8px 0 3px}
-aside .pk select,aside .ib{background:rgba(255,255,255,.1);color:var(--chalk);border:1.5px solid rgba(246,243,232,.5);border-radius:10px}
-aside .pk select option{color:#222;background:#fff}
-aside .ib:hover{background:rgba(255,255,255,.22)}
-aside .btn{border-color:#101a16;box-shadow:0 3px 0 rgba(0,0,0,.45)}
-aside .btn:active{box-shadow:0 0 0 rgba(0,0,0,.45)}
-.auth .who{color:rgba(246,243,232,.8)}
-.lapi-side{display:flex;justify-content:center;margin-top:8px}.lapi-side .lapi{width:84px}
-aside::after{content:"";display:block;height:12px;margin:4px 4px 0;border-radius:5px;background:linear-gradient(90deg,transparent 0 10%,#f6f3e8 10% 26%,transparent 26% 33%,#ffe066 33% 46%,transparent 46% 66%,#9aa5a0 66% 86%,transparent 86%),var(--wood);box-shadow:0 2px 0 rgba(0,0,0,.3)}
-/* hoja cuadriculada con margen */
-main{position:relative;padding:34px 28px 64px 50px}
-main::before{content:"";position:absolute;left:22px;top:0;bottom:0;width:6px;border-left:2px solid var(--margin);border-right:2px solid var(--margin);pointer-events:none}
-.top h2{display:inline-block;font:400 2.6rem/1.1 var(--fd);letter-spacing:0;padding:0 .2em;margin-left:-.2em;background:linear-gradient(transparent 56%,var(--kh) 56% 90%,transparent 90%)}
-.lead{font:400 1.25rem/1.35 var(--fd);color:var(--mu)}
-/* botones tipo marcador */
-.btn{border:2px solid var(--ink);background:var(--ac);color:var(--acx);padding:9px 18px;border-radius:14px;box-shadow:0 3px 0 var(--ink);font:700 .95rem var(--fb);transition:transform .08s,box-shadow .08s}
-.btn:hover{transform:translateY(-1px);box-shadow:0 4px 0 var(--ink)}
-.btn:active{transform:translateY(3px);box-shadow:0 0 0 var(--ink)}
-.btn.soft{background:var(--hl);color:#2b2b2b}
-.btn.del{background:transparent;color:var(--dg);border-color:transparent;box-shadow:none}
-.btn.del:hover,.btn.del:active{transform:none;box-shadow:none;text-decoration:underline}
-.btn:disabled{opacity:.5;box-shadow:none;transform:none}
-.btn:focus-visible,summary:focus-visible{outline:3px solid var(--ac);outline-offset:3px}
-select.cur{border:2px solid var(--ink);border-radius:12px}
-/* tarjetas: hojas pegadas con cinta */
-.item{position:relative;overflow:visible;margin:22px 0 18px;background:var(--sf);border:2px solid var(--ink);border-left:10px solid var(--kc);border-radius:6px 18px 18px 6px;box-shadow:4px 4px 0 rgba(38,50,77,.16)}
-.item::before{content:"";position:absolute;top:-11px;left:36px;width:74px;height:20px;background:var(--kh);opacity:.92;transform:rotate(-3deg);border-radius:2px;box-shadow:0 1px 2px rgba(0,0,0,.18);pointer-events:none}
-.item h3{font:400 1.5rem/1.2 var(--fd)}
-.badge{border:2px solid var(--ink);border-radius:50%}
-.body{border-top:2px dashed var(--bd)}
-.f b{font:400 1.2rem var(--fd);color:var(--kc)}
-.chip{border:1.5px dashed var(--mu);background:transparent}.chip.tagk{border:1.5px solid transparent}
-.files a{border:2px solid var(--ink);box-shadow:2px 2px 0 rgba(38,50,77,.2);background:var(--sf2);transition:transform .08s}
-.files a:hover{transform:translate(-1px,-1px)}
-.empty{background:var(--sf2);border:3px dashed var(--bd);border-radius:22px;padding:30px 20px 38px}
-.empty .big{font:400 1.8rem/1.2 var(--fd);color:var(--tx)}
-.empty .lapi{display:block;width:104px;margin:0 auto 4px}
-/* formularios y diálogos */
-input,textarea,select{border:2px solid var(--ink);border-radius:12px;background:var(--sf)}
-input:focus,textarea:focus,select:focus{outline:3px solid var(--ac);outline-offset:1px}
-label{font-weight:700}
-.chipsel span{border:2px dashed var(--mu);background:var(--sf)}
-.chipsel input:checked+span{background:var(--hl);color:#2b2b2b;border:2px solid var(--ink)}
-.chipsel input:checked+span::before{content:"✓ ";font-weight:800}
-dialog{border:3px solid var(--ink);border-radius:22px;box-shadow:10px 10px 0 rgba(38,50,77,.28)}
-dialog::backdrop{background:rgba(20,33,28,.55)}
-dialog h3{font:400 2.1rem/1.1 var(--fd)}
-.lh{display:flex;align-items:center;gap:12px}.lh .lapi{width:62px;flex:none}.lh h3{margin:0}.lh p{margin:0;font:400 1.15rem var(--fd);color:var(--mu)}
-.gcfg{border-radius:6px 18px 18px 6px}
-/* movimiento (se apaga si la persona lo prefiere) */
-.lapi .wave{transform-origin:92px 92px;animation:lapi-wave 3.4s ease-in-out infinite}
-.empty .lapi{animation:lapi-bob 3.2s ease-in-out infinite}
-@keyframes lapi-wave{0%,55%,100%{transform:rotate(0)}65%{transform:rotate(-16deg)}75%{transform:rotate(8deg)}85%{transform:rotate(-14deg)}}
-@keyframes lapi-bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-5px)}}
-@media (hover:hover) and (prefers-reduced-motion:no-preference){.item{transition:transform .15s}.item:hover{transform:rotate(-.3deg)}}
-@media (prefers-reduced-motion:reduce){.lapi .wave,.empty .lapi{animation:none}.btn,.files a,.item{transition:none}}
+.app{grid-template-columns:250px 1fr;max-width:1100px}
+aside{background:var(--sf);border-right:1px solid var(--bd);padding:22px 16px;position:sticky;top:0;height:100vh;overflow-y:auto;align-self:start}
+.mark{display:none}
+.brand h1{font:700 1.25rem/1.2 var(--fb)}
+.role{margin:2px 0 18px;font-size:.85rem}
+nav{gap:2px}
+nav .grp{font-size:.72rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--mu);margin:14px 10px 4px}
+nav button{font:600 .95rem var(--fb);padding:8px 10px;border-radius:10px}
+nav button:hover{background:var(--sf2)}
+nav button.on{background:var(--plans-bg);color:var(--plans-ink);box-shadow:none}
+nav button .dot{width:26px;height:26px;border-radius:8px;background:transparent!important;font-size:1rem}
+.picker label{font-size:.75rem;margin:8px 0 3px}
+.btn{border-radius:10px;padding:9px 16px;font:700 .9rem var(--fb)}
+.btn.soft{background:var(--plans-bg);color:var(--plans-ink)}
+.btn.del{background:transparent;color:var(--dg)}
+main{padding:30px 28px 64px}
+.top h2{font:700 1.7rem/1.2 var(--fb)}
+.lead{font:400 1rem/1.5 var(--fb);color:var(--mu)}
+.item{margin-bottom:10px;border-radius:14px;border:1px solid var(--bd);box-shadow:none;overflow:hidden}
+.item summary{padding:14px 16px}
+.item h3{font:700 1.05rem/1.3 var(--fb)}
+.badge{width:38px;height:38px;border-radius:10px;font-size:1.1rem}
+.body{padding:2px 20px 18px 20px}
+.f b{font:700 .9rem var(--fb);color:var(--kc)}
+.empty{background:var(--sf);border:1px dashed var(--bd);border-radius:14px;padding:36px 20px}
+.empty .big{font:700 1.2rem var(--fb)}
+.chip{border:1px solid var(--bd)}
+.files a,.gdl{border:1px solid var(--bd);border-radius:10px;padding:7px 12px;font-weight:600;font-size:.88rem;text-decoration:none;color:var(--tx);background:var(--sf2);cursor:pointer;font-family:var(--fb)}
+dialog{border-radius:16px}
+dialog h3{font:700 1.3rem var(--fb)}
+.lh{display:block}.lh p{margin:0;color:var(--mu)}
+.lb-more{margin-top:12px}.lb-more summary{cursor:pointer;font-weight:700;color:var(--ac)}
 @media (max-width:760px){
  .app{grid-template-columns:1fr}
- aside{margin:12px 12px 0;border-width:6px;padding:14px 12px 10px;max-height:none;top:0}
- .lapi-side{display:none}aside::after{display:none}
- main{padding:20px 14px 56px 30px}main::before{left:10px}
- .top h2{font-size:2.1rem}
- nav button{font-size:1.1rem}
+ aside{position:static;height:auto;border-right:0;border-bottom:1px solid var(--bd);padding:14px 14px 8px}
+ nav{flex-direction:row;overflow-x:auto}nav .grp{display:none}
+ main{padding:18px 14px 56px}
 }
-@media print{body{background:#fff!important;background-image:none!important}main{padding:0!important}main::before,.item::before,aside::after{display:none!important}}
+@media print{body{background:#fff!important}main{padding:0!important}}
 
 /* ===== Hoja del examen: figuras, recordatorios y apartados ===== */
 .ex-body{display:flex;gap:18px;align-items:flex-start}
@@ -222,10 +183,10 @@ body[data-tab=lib]{--kc:var(--materials-ink);--kb:var(--materials-bg);--kh:var(-
 .lb-row{display:flex;gap:16px;flex-wrap:wrap}.lb-f{flex:1;min-width:230px}
 .lb-opts{margin:8px 0 2px}.lb-opts .chk{margin:0 12px 0 0}
 .lb-books{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:10px 0 4px}.lb-books>span{font-weight:700;margin-right:4px}
-.lb-note{margin:12px 0;padding:10px 14px;border:2px dashed var(--bd);border-radius:14px;background:var(--sf2);font-size:.92rem}
+.lb-note{margin:12px 0;padding:10px 14px;border:1px solid var(--bd);border-radius:14px;background:var(--sf2);font-size:.92rem}
 .lb-sum{margin:18px 0 8px;font-size:1.02rem;display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;justify-content:space-between}
-.lb-g{margin:16px 0}.lb-bt{font:400 1.6rem/1.2 var(--fd);margin:14px 0 8px}.lb-bt small{font:600 .85rem var(--fb);color:var(--mu);margin-left:6px}
-.lb-res{background:var(--sf);border:2px solid var(--ink);border-left:8px solid var(--kc);border-radius:6px 16px 16px 6px;padding:10px 14px;margin:0 0 12px;box-shadow:3px 3px 0 rgba(38,50,77,.14)}
+.lb-g{margin:16px 0}.lb-bt{font:700 1.2rem/1.3 var(--fb);margin:14px 0 8px}.lb-bt small{font:600 .85rem var(--fb);color:var(--mu);margin-left:6px}
+.lb-res{background:var(--sf);border:1px solid var(--bd);border-left:5px solid var(--kc);border-radius:10px;padding:10px 14px;margin:0 0 10px}
 .lb-pg{display:flex;align-items:center;gap:8px;font-size:1rem;cursor:pointer;width:fit-content;margin:0}
 .lb-pg input[type=checkbox]{width:18px;height:18px;margin:0;padding:0;flex:none;accent-color:var(--ac)}
 .lb-st{flex:1;min-width:240px}.lb-print .btn{margin-left:4px}
@@ -233,11 +194,11 @@ body[data-tab=lib]{--kc:var(--materials-ink);--kb:var(--materials-bg);--kh:var(-
 .lb-snip mark,.lb-full mark{background:var(--kh);color:inherit;padding:0 2px;border-radius:3px}
 .lb-act .btn{padding:6px 12px;font-size:.84rem;margin-right:6px}
 .lb-full{margin-top:8px}.lb-full pre,#lbv-b pre{white-space:pre-wrap;font:inherit;line-height:1.55;background:var(--sf2);border:1.5px dashed var(--bd);border-radius:10px;padding:10px 12px;max-height:420px;overflow:auto;margin:0}
-.lb-h{font:400 1.7rem var(--fd);margin:30px 0 8px}
-.lb-doc{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;background:var(--sf);border:2px solid var(--ink);border-radius:14px;padding:10px 14px;margin:0 0 10px}
+.lb-h{font:700 1.3rem var(--fb);margin:30px 0 8px}
+.lb-doc{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;background:var(--sf);border:1px solid var(--bd);border-radius:12px;padding:10px 14px;margin:0 0 10px}
 .lb-meta{font-size:.84rem;color:var(--mu)}
-.lb-prog{margin:12px 0;padding:12px 14px;border:2px solid var(--ink);border-radius:14px;background:var(--sf2)}
-.lb-bar{height:14px;border:2px solid var(--ink);border-radius:10px;overflow:hidden;background:var(--sf)}.lb-bar i{display:block;height:100%;background:var(--hl);transition:width .2s}
+.lb-prog{margin:12px 0;padding:12px 14px;border:1px solid var(--bd);border-radius:12px;background:var(--sf2)}
+.lb-bar{height:12px;border:1px solid var(--bd);border-radius:10px;overflow:hidden;background:var(--sf)}.lb-bar i{display:block;height:100%;background:var(--hl);transition:width .2s}
 .lb-pm{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:8px;font-size:.9rem;flex-wrap:wrap}
 #lb-view{width:min(96vw,980px);max-height:94vh;padding:14px;overflow:auto;background:var(--sf);color:var(--tx)}
 .lbv-bar{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px}
@@ -248,17 +209,22 @@ body[data-tab=lib]{--kc:var(--materials-ink);--kb:var(--materials-bg);--kh:var(-
 .sheet-lib .lb-pp{break-inside:avoid-page;margin:0 0 16px;padding-bottom:10px;border-bottom:1px solid #bbb}.sheet-lib h4{margin:0 0 6px;font:700 .95rem var(--fb);color:#222}
 .sheet-lib pre{white-space:pre-wrap;font:.92rem/1.5 var(--fb);color:#111;margin:0}
 @media print{.lib-ui,#lb-view,.lb-note,#lb-prog{display:none!important}.sheet-lib{display:block!important;background:#fff;color:#111}}
+/* ===== Guías y acceso ===== */
+.gd-item{display:flex;gap:10px;align-items:center;background:var(--sf);border:1px solid var(--bd);border-radius:10px;padding:8px 12px;margin:0 0 8px}
+.gd-item .gd-t{flex:1;min-width:0}.gd-item small{color:var(--mu)}
+.gd-box{background:var(--sf);border:1px solid var(--bd);border-radius:14px;padding:16px 18px;margin:0 0 18px}
+.share-row{display:flex;gap:8px;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--bd)}
+@media print{.gd-box{display:none!important}}
 </style>
 </head>
 <body>
 <div class="app">
 <aside>
-  <div class="brand"><div class="mark">π</div><h1>Aula de<br>Matemática</h1></div>
+  <div class="brand"><h1>📐 Aula de Matemática</h1></div>
   <p class="role" id="role">&nbsp;</p>
   <div id="picker" class="picker"></div>
   <nav id="nav"></nav>
   <div class="auth" id="auth"></div>
-  <div class="lapi-side" id="lapi-side"></div>
 </aside>
 <main id="main"><div class="empty"><div class="big">Cargando…</div></div></main>
 </div>
@@ -269,9 +235,9 @@ body[data-tab=lib]{--kc:var(--materials-ink);--kb:var(--materials-bg);--kh:var(-
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="config.js"></script>
-<script src="mascota.js"></script>
 <script src="gen.js"></script>
 <script src="biblioteca.js"></script>
+<script src="guias.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

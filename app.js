@@ -8,7 +8,8 @@ const SECTIONS = {
     ['tipo','Tipo','select',['Escrita','Oral','Trabajo práctico','Recuperatorio']],
     ['contenidos','Contenidos a evaluar','area'],['criterios','Criterios de evaluación','area'],['notas','Notas y ponderación','area']]},
   gen: {label:'Generar examen', ico:'🧮', teacher:true, lead:'', fields:[]},
-  lib: {label:'Biblioteca', ico:'📖', teacher:true, lead:'', fields:[]},
+  lib: {label:'Biblioteca', ico:'📖', teacher:true, reader:true, lead:'', fields:[]},
+  guides: {label:'Guías', ico:'📑', teacher:true, lead:'', fields:[]},
   materials: {label:'Material', ico:'📚', teacher:false, lead:'Apuntes, libros y recursos para estudiar.', empty:'Todavía no hay material', fields:[
     ['title','Título','text'],['descripcion','Descripción','area']]},
   tasks: {label:'Tareas', ico:'🌟', teacher:false, lead:'Lo que tenés para resolver y la fecha de entrega.', empty:'Todavía no hay tareas', fields:[
@@ -25,8 +26,11 @@ let auth, fs, user = null, tab = 'materials', unsubs = [], metaUnsubs = [];
 let spaces = [], courses = [], spaceId = '', courseId = '', subbed = null, studentCourse = null, badLink = false, loaded = {sp:false, cu:false};
 const col = name => fs.collection('courses').doc(courseId).collection(name);
 let data = {plans:[],exams:[],materials:[],tasks:[]};
-const canEdit = () => !!user;
-const visible = () => Object.keys(SECTIONS).filter(k => canEdit() || !SECTIONS[k].teacher);
+const TEACHER = String(window.TEACHER_EMAIL || '').toLowerCase();
+const canEdit = () => !!user && String(user.email || '').toLowerCase() === TEACHER;
+const isReader = () => !!user && !canEdit();
+const visible = () => Object.keys(SECTIONS).filter(k => canEdit() || (isReader() ? SECTIONS[k].reader : !SECTIONS[k].teacher));
+const GROUPS = {plans:'Mi planificación', lib:'Recursos', materials:'Para los alumnos'};
 
 function parseLinks(text){
   return text.split('\n').map(l => l.trim()).filter(Boolean).map(l => {
@@ -38,20 +42,22 @@ function parseLinks(text){
 }
 
 function renderNav(){
-  $('#nav').innerHTML = visible().map(k => `<button class="k-${k} ${k===tab?'on':''}" data-t="${k}"><span class="dot">${SECTIONS[k].ico}</span>${SECTIONS[k].label}<span class="n">${(data[k]||[]).length||''}</span></button>`).join('');
+  const showGroups = canEdit();
+  $('#nav').innerHTML = visible().map(k => (showGroups && GROUPS[k] ? `<div class="grp">${GROUPS[k]}</div>` : '') + `<button class="k-${k} ${k===tab?'on':''}" data-t="${k}"><span class="dot">${SECTIONS[k].ico}</span>${SECTIONS[k].label}</button>`).join('');
   $('#nav').querySelectorAll('button').forEach(b => b.onclick = () => { tab = b.dataset.t; render(); });
-  $('#auth').innerHTML = canEdit()
+  $('#auth').innerHTML = user
     ? `<p class="who">${esc(user.email)}</p><button class="btn soft" id="lo">Cerrar sesión</button>`
-    : `<button class="btn soft" id="li">Ingreso docente</button>`;
-  if(canEdit()) $('#lo').onclick = () => auth.signOut(); else $('#li').onclick = openLogin;
+    : `<button class="btn soft" id="li">Ingresar</button>`;
+  if(user) $('#lo').onclick = () => auth.signOut(); else $('#li').onclick = openLogin;
 }
 
 function render(){
   if(!visible().includes(tab)) tab = visible()[0];
   document.body.dataset.tab = tab;
   renderNav();
-  $('#role').textContent = canEdit() ? 'Panel de la profesora' : (studentCourse ? `${studentCourse.escuela || ''} · ${studentCourse.name}` : 'Espacio de estudio');
+  $('#role').textContent = canEdit() ? 'Panel de la profesora' : isReader() ? 'Biblioteca compartida (solo lectura)' : (studentCourse ? `${studentCourse.escuela || ''} · ${studentCourse.name}` : 'Espacio de estudio');
   if(tab==='gen'){ renderGen(); return; }
+  if(tab==='guides'){ if(typeof renderGuides==='function') renderGuides(); return; }
   if(tab==='lib'){ if(typeof renderLib==='function') renderLib(); else $('#main').innerHTML = '<div class="empty"><div class="big">Falta un archivo</div>Para usar la Biblioteca subí a GitHub el archivo <b>biblioteca.js</b> y el <b>index.html</b> nuevo, y recargá con Ctrl + F5.</div>'; return; }
   if(!courseId){
     if(canEdit()){
@@ -76,13 +82,14 @@ function render(){
     h += `</div></div><span class="chev">⌄</span></summary><div class="body">`;
     S.fields.forEach(([k,l,t]) => { if(t==='area' && d[k]) h += `<div class="f"><b>${l}</b><p>${esc(d[k])}</p></div>`; });
     const fl = (d.files||[]).filter(f => safeUrl(f.url));
-    if(fl.length) h += `<div class="files">${fl.map(f=>`<a href="${esc(f.url)}" target="_blank" rel="noopener">📎 ${esc(f.name)}</a>`).join('')}</div>`;
+    if(fl.length || d.guideId) h += `<div class="files">${d.guideId ? `<button class="gdl" data-gd="${d.guideId}" data-gn="${esc(d.guideTitle||d.title||'guia')}">📄 Descargar guía (PDF)</button>` : ''}${fl.map(f=>`<a href="${esc(f.url)}" target="_blank" rel="noopener">📎 ${esc(f.name)}</a>`).join('')}</div>`;
     if(canEdit()) h += `<div class="acts">${d.ejercicios?`<button class="btn" data-g="${d.id}">Abrir examen</button>`:''}<button class="btn soft" data-e="${d.id}">Editar</button><button class="btn del" data-d="${d.id}">Borrar</button></div>`;
     h += `</div></details>`;
   });
   const open = [...document.querySelectorAll('details[open] h3')].map(x => x.textContent);
   $('#main').innerHTML = h;
   document.querySelectorAll('details').forEach(el => { if(open.includes(el.querySelector('h3').textContent)) el.open = true; });
+  document.querySelectorAll('[data-gd]').forEach(b => b.onclick = async () => { b.disabled = true; const t = b.textContent; b.textContent = 'Descargando…'; try { await downloadGuide(b.dataset.gd, b.dataset.gn); } catch(e){ console.error(e); alert('No se pudo descargar la guía. Probá de nuevo.'); } b.disabled = false; b.textContent = t; });
   if(canEdit()){
     $('#add').onclick = () => openForm();
     document.querySelectorAll('[data-g]').forEach(b => b.onclick = () => openSavedExam(all.find(x => x.id===b.dataset.g)));
@@ -118,6 +125,7 @@ function openForm(d){
     $('#frm').querySelectorAll('[name]').forEach(el => { if(el.name!=='__links') obj[el.name] = el.value.trim(); });
     obj.files = parseLinks($('#frm').querySelector('[name="__links"]').value);
     if(d.ejercicios) obj.ejercicios = d.ejercicios;
+    if(d.guideId){ obj.guideId = d.guideId; obj.guideTitle = d.guideTitle || ''; }
     if(!obj.title){ alert('Escribí un título para guardar.'); return; }
     try {
       const c = col(tab);
@@ -129,26 +137,39 @@ function openForm(d){
 }
 
 function openLogin(){
-  $('#lfrm').innerHTML = `<div class="lh">${typeof LAPI==='undefined'?'':LAPI}<div><h3>Ingreso docente</h3><p>¡Hola, profe!</p></div></div>
+  let reg = false;
+  const draw = () => {
+    $('#lfrm').innerHTML = `<h3>${reg ? 'Crear cuenta' : 'Ingresar'}</h3><p class="note" style="margin:0 0 6px">${reg ? 'Para ver la biblioteca compartida. Usá el correo que te habilitó la profesora.' : 'Profesora o persona con acceso a la biblioteca.'}</p>
     <label>Correo</label><input id="em" type="email" autocomplete="username">
-    <label>Contraseña</label><input id="pw" type="password" autocomplete="current-password">
+    <label>Contraseña</label><input id="pw" type="password" autocomplete="${reg ? 'new-password' : 'current-password'}">
     <div class="err" id="er"></div>
-    <div class="acts"><button class="btn" id="go">Ingresar</button><button class="btn soft" id="lx">Cancelar</button></div>`;
-  $('#lx').onclick = () => $('#ldlg').close();
-  const go = async () => {
-    try { await auth.signInWithEmailAndPassword($('#em').value.trim(), $('#pw').value); $('#ldlg').close(); }
-    catch(e){ console.error(e); $('#er').textContent = 'No se pudo ingresar (' + (e.code || e.message) + ').'; }
+    <div class="acts"><button class="btn" id="go">${reg ? 'Crear cuenta' : 'Ingresar'}</button><button class="btn soft" id="lx">Cancelar</button></div>
+    <p class="note"><a href="#" id="sw">${reg ? 'Ya tengo cuenta' : 'Es mi primera vez (crear cuenta)'}</a></p>`;
+    $('#lx').onclick = () => $('#ldlg').close();
+    $('#sw').onclick = e => { e.preventDefault(); reg = !reg; draw(); };
+    const go = async () => {
+      const em = $('#em').value.trim(), pw = $('#pw').value;
+      try {
+        if(reg){
+          const c = await auth.createUserWithEmailAndPassword(em, pw);
+          try { await c.user.sendEmailVerification(); } catch(e){}
+          await auth.signOut();
+          $('#lfrm').innerHTML = '<h3>¡Cuenta creada!</h3><p>Te mandamos un correo para confirmar tu dirección. Abrilo, tocá el enlace y después volvé acá a ingresar.</p><div class="acts"><button class="btn" id="lx2">Entendido</button></div>';
+          $('#lx2').onclick = () => $('#ldlg').close();
+        } else { await auth.signInWithEmailAndPassword(em, pw); $('#ldlg').close(); }
+      } catch(e){ console.error(e); $('#er').textContent = 'No se pudo ' + (reg ? 'crear la cuenta' : 'ingresar') + ' (' + (e.code || e.message) + ').'; }
+    };
+    $('#go').onclick = go;
+    $('#pw').onkeydown = e => { if(e.key==='Enter') go(); };
   };
-  $('#go').onclick = go;
-  $('#pw').onkeydown = e => { if(e.key==='Enter') go(); };
-  $('#ldlg').showModal();
+  draw(); $('#ldlg').showModal();
 }
 
 function subscribe(){
   unsubs.forEach(u => u()); unsubs = [];
   data = {plans:[],exams:[],materials:[],tasks:[]};
   if(courseId){
-    visible().filter(k => k!=='gen' && k!=='lib').forEach(k => {
+    visible().filter(k => k!=='gen' && k!=='lib' && k!=='guides').forEach(k => {
       unsubs.push(col(k).orderBy('created','desc').onSnapshot(
         s => { data[k] = s.docs.map(x => ({id:x.id, ...x.data()})); render(); },
         err => { console.error(err); $('#role').textContent = 'No se pudieron cargar los datos'; }
@@ -245,12 +266,15 @@ if(!configured){
   firebase.initializeApp(cfg);
   auth = firebase.auth(); fs = firebase.firestore();
   auth.onAuthStateChanged(u => {
-    user = u; tab = u ? 'plans' : 'materials'; if(typeof libReset==='function') libReset();
+    user = u; tab = !u ? 'materials' : (String(u.email||'').toLowerCase() === TEACHER ? 'plans' : 'lib'); if(typeof libReset==='function') libReset();
     metaUnsubs.forEach(f => f()); metaUnsubs = [];
     unsubs.forEach(f => f()); unsubs = [];
     subbed = null; studentCourse = null; badLink = false; courseId = ''; spaces = []; courses = []; loaded = {sp:false, cu:false};
     data = {plans:[],exams:[],materials:[],tasks:[]};
-    if(u){
+    if(u && !canEdit()){
+      if(!u.emailVerified){ $('#main').innerHTML = '<div class="empty"><div class="big">Falta confirmar tu correo</div>Abrí el correo que te enviamos, tocá el enlace de confirmación y volvé a ingresar.<br><br><button class="btn" id="vo">Cerrar sesión</button></div>'; renderNav(); $('#vo').onclick = () => auth.signOut(); return; }
+      renderPicker(); u.getIdToken(true).catch(() => {}).then(() => render());
+    } else if(u){
       try { const sel = JSON.parse(localStorage.getItem('aula_sel') || '{}'); spaceId = sel.spaceId || ''; courseId = sel.courseId || ''; } catch(e){}
       const onErr = err => { console.error(err); $('#role').textContent = 'No se pudieron cargar los datos'; };
       metaUnsubs.push(fs.collection('spaces').orderBy('name').onSnapshot(sn => { spaces = sn.docs.map(x => ({id:x.id, ...x.data()})); loaded.sp = true; syncSel(); }, onErr));

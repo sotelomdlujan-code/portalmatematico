@@ -628,15 +628,16 @@ function renderGen(){
   G.temas=G.temas.filter(k=>tp.some(t=>t.k===k));
   let h=`<div class="top"><h2>Generar examen</h2></div><p class="lead">Elegí el año, los temas, la dificultad y el puntaje. La plataforma arma los ejercicios con números distintos cada vez, y calcula la clave de corrección.</p>`;
   h+=`<div class="item gcfg"><div class="gp"><label>Título del examen</label><input id="g-title" value="${esc(G.title)}">
-  <div class="row3"><div><label>Escuela (opcional)</label><input id="g-esc" value="${esc(G.escuela)}"></div><div><label>Curso</label><input id="g-cur" placeholder="3° B" value="${esc(G.curso)}"></div><div><label>Fecha</label><input id="g-fec" type="date" value="${esc(G.fecha)}"></div></div>
-  <div class="row3"><div><label>Año</label><select id="g-anio">${[1,2,3,4,5,6].map(a=>`<option value="${a}" ${a==G.anio?'selected':''}>${a}.º año</option>`).join('')}</select></div>
+    <div class="row3"><div><label>Año</label><select id="g-anio">${[1,2,3,4,5,6].map(a=>`<option value="${a}" ${a==G.anio?'selected':''}>${a}.º año</option>`).join('')}</select></div>
   <div><label>Dificultad</label><select id="g-dif">${DIF.map((x,i)=>`<option value="${i}" ${i==G.dif?'selected':''}>${x}</option>`).join('')}</select></div>
   <div><label>Cantidad de ejercicios</label><input id="g-n" type="number" min="1" max="20" value="${G.n}"></div></div>
   <div class="row3"><div><label>Puntaje total</label><input id="g-pts" type="number" min="1" max="100" step="0.5" value="${G.puntos}"></div></div>
   <label>Temas <span class="noprint"><button type="button" class="btn soft" id="g-on" style="padding:3px 12px;font-size:.8rem;margin-left:8px">Marcar todos</button> <button type="button" class="btn soft" id="g-off" style="padding:3px 12px;font-size:.8rem">Ninguno</button></span></label><div class="gtopics">${tp.map(t=>`<label class="chipsel"><input type="checkbox" class="gt" value="${t.k}" ${G.temas.includes(t.k)?'checked':''}><span>${t.n}</span></label>`).join('')}</div>
+  <details class="lb-more"><summary>Más opciones</summary>
+  <div class="row3"><div><label>Escuela (opcional)</label><input id="g-esc" value="${esc(G.escuela)}"></div><div><label>Curso</label><input id="g-cur" placeholder="3° B" value="${esc(G.curso)}"></div><div><label>Fecha</label><input id="g-fec" type="date" value="${esc(G.fecha)}"></div></div>
   <label class="chk"><input type="checkbox" id="g-all" ${G.all?'checked':''}> Mostrar temas de todos los años</label>
   <label class="chk"><input type="checkbox" id="g-b" ${G.b?'checked':''}> Generar también un Tema B (distintos números)</label>
-  <label class="chk"><input type="checkbox" id="g-tips" ${G.tips!==false?'checked':''}> Incluir recordatorios en las consignas (fórmulas y definiciones útiles)</label>
+  <label class="chk"><input type="checkbox" id="g-tips" ${G.tips!==false?'checked':''}> Incluir recordatorios en las consignas</label></details>
   <div class="acts" style="margin-top:18px"><button class="btn" id="g-go">${G.sets?'Generar de nuevo':'Generar examen'}</button></div></div></div>`;
   if(G.sets){
     const ex=G.sets[G.cur]||G.sets.A,P=pts(G.puntos,ex.length),T=Object.keys(G.sets).length>1?` · Tema ${G.cur}`:'';

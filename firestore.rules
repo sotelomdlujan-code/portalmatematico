@@ -4,10 +4,31 @@ service cloud.firestore {
     function esProfe() {
       return request.auth != null && request.auth.token.email == "sotelo.m.d.lujan@gmail.com";
     }
-    // Biblioteca de PDF y libros: solo la profesora.
+    // Personas habilitadas para ver y descargar la biblioteca (solo lectura).
+    // La lista de correos la maneja la profesora desde la pantalla Biblioteca.
+    function esLector() {
+      return request.auth != null
+        && request.auth.token.email_verified == true
+        && exists(/databases/$(database)/documents/config/lectores)
+        && request.auth.token.email.lower() in get(/databases/$(database)/documents/config/lectores).data.emails;
+    }
+
+    match /config/{id} { allow read, write: if esProfe(); }
+
+    // Biblioteca: la profesora edita; los lectores habilitados solo leen.
     match /library/{id} {
-      allow read, write: if esProfe();
-      match /chunks/{c} { allow read, write: if esProfe(); }
+      allow read: if esProfe() || esLector();
+      allow write: if esProfe();
+      match /chunks/{c} { allow read: if esProfe() || esLector(); allow write: if esProfe(); }
+      match /pdf/{c}    { allow read: if esProfe() || esLector(); allow write: if esProfe(); }
+    }
+
+    // Guías PDF armadas por la profesora. Un alumno solo puede bajar la guía cuyo id conoce
+    // (se la comparte la profesora dentro del Material de su curso).
+    match /guides/{id} {
+      allow get: if true;
+      allow list, write: if esProfe();
+      match /pdf/{c} { allow read: if true; allow write: if esProfe(); }
     }
 
     // Escuelas: solo la profesora.
@@ -19,10 +40,8 @@ service cloud.firestore {
       allow get: if true;
       allow list, write: if esProfe();
 
-      // Material y tareas: se leen con el link del curso.
       match /materials/{id} { allow read: if true; allow write: if esProfe(); }
       match /tasks/{id}     { allow read: if true; allow write: if esProfe(); }
-      // Planificaciones y evaluaciones: solo la profesora.
       match /plans/{id}     { allow read, write: if esProfe(); }
       match /exams/{id}     { allow read, write: if esProfe(); }
     }
