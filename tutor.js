@@ -17,7 +17,7 @@ function tutorContext(pregunta) {
     if (sc > 0) hits.push({ pg, sc });
   }
   hits.sort((a, b) => b.sc - a.sc);
-  const top = hits.slice(0, 6); // Toma las 6 páginas más relevantes
+  const top = hits.slice(0, 6);
 
   const texto = top.map(h =>
     `--- LIBRO: "${h.pg.bt}" (Página ${h.pg.p}) ---\n${h.pg.t.slice(0, 3500)}`
@@ -27,7 +27,7 @@ function tutorContext(pregunta) {
   return { texto, fuentes, libros };
 }
 
-// 2. Llama a la API gratuita de Gemini (gemini-3.8-flash)
+// 2. Llama a la API gratuita de Gemini con respaldo automático ante alta demanda
 async function tutorAsk(pregunta) {
   if (!TUTOR.key) {
     alert('Primero pegá tu API Key gratuita de Google AI Studio.');
@@ -55,25 +55,42 @@ REGLAS ESTRICTAS:
     ? `${listaLibros}FRAGMENTOS ENCONTRADOS EN LA BIBLIOTECA:\n${ctx.texto}\n\nPREGUNTA DEL USUARIO:\n${pregunta}`
     : `${listaLibros}AVISO: No se encontraron coincidencias directas en los PDF cargados.\n\nPREGUNTA DEL USUARIO:\n${pregunta}`;
 
-  try {
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${encodeURIComponent(TUTOR.key)}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        system_instruction: { parts: [{ text: systemPrompt }] },
-        contents: [{ role: 'user', parts: [{ text: promptFinal }] }],
-        generationConfig: { temperature: 0.2 }
-      })
-    });
+  // Lista de modelos gratuitos en orden de prioridad (si uno está saturado, pasa al siguiente)
+  const modelos = ['gemini-3.8-flash', 'gemini-3.8-flash-lite', 'gemini-3.5-flash'];
+  let respuesta = '';
+  let ultimoError = '';
 
-    const json = await res.json();
-    if (!res.ok) throw new Error(json.error?.message || 'Error en la API');
+  for (const modelo of modelos) {
+    try {
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent?key=${encodeURIComponent(TUTOR.key)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          system_instruction: { parts: [{ text: systemPrompt }] },
+          contents: [{ role: 'user', parts: [{ text: promptFinal }] }],
+          generationConfig: { temperature: 0.2 }
+        })
+      });
 
-    const respuesta = json.candidates?.[0]?.content?.parts?.[0]?.text || 'No pude generar una respuesta.';
+      const json = await res.json();
+      if (!res.ok) {
+        ultimoError = json.error?.message || `Error ${res.status}`;
+        // Si hay alta demanda (503) o límite temporal (429), prueba el siguiente modelo
+        if (res.status === 503 || res.status === 429 || /high demand/i.test(ultimoError)) continue;
+        throw new Error(ultimoError);
+      }
+
+      respuesta = json.candidates?.[0]?.content?.parts?.[0]?.text || 'No pude generar una respuesta.';
+      break;
+    } catch (e) {
+      ultimoError = e.message;
+    }
+  }
+
+  if (respuesta) {
     TUTOR.history.push({ role: 'ai', text: respuesta, fuentes: ctx.fuentes });
-  } catch (e) {
-    console.error(e);
-    TUTOR.history.push({ role: 'ai', text: '⚠️ Error al conectar con la IA: ' + e.message, fuentes: [] });
+  } else {
+    TUTOR.history.push({ role: 'ai', text: '⚠️ Error al conectar con la IA: ' + ultimoError, fuentes: [] });
   }
 
   TUTOR.busy = false;
@@ -112,7 +129,6 @@ function renderTutor() {
     </div>
   `;
 
-  // Renderizar fórmulas LaTeX con KaTeX
   if (window.renderMathInElement) {
     renderMathInElement(document.getElementById('tu-chat'), {
       delimiters: [
