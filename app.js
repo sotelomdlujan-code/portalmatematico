@@ -10,6 +10,7 @@ const SECTIONS = {
   gen: {label:'Generar examen', ico:'🧮', teacher:true, lead:'', fields:[]},
   lib: {label:'Biblioteca', ico:'📖', teacher:true, reader:true, lead:'', fields:[]},
   guides: {label:'Guías', ico:'📑', teacher:true, lead:'', fields:[]},
+  tutor: {label:'Tutor IA', ico:'🤖', teacher:true, reader:true, lead:'Consultá dudas de matemática basadas en tus libros cargados.', fields:[]},
   materials: {label:'Material', ico:'📚', teacher:false, lead:'Apuntes, libros y recursos para estudiar.', empty:'Todavía no hay material', fields:[
     ['title','Título','text'],['descripcion','Descripción','area']]},
   tasks: {label:'Tareas', ico:'🌟', teacher:false, lead:'Lo que tenés para resolver y la fecha de entrega.', empty:'Todavía no hay tareas', fields:[
@@ -58,6 +59,7 @@ function render(){
   $('#role').textContent = canEdit() ? 'Panel de la profesora' : isReader() ? 'Biblioteca compartida (solo lectura)' : (studentCourse ? `${studentCourse.escuela || ''} · ${studentCourse.name}` : 'Espacio de estudio');
   if(tab==='gen'){ renderGen(); return; }
   if(tab==='guides'){ if(typeof renderGuides==='function') renderGuides(); return; }
+  if(tab==='tutor'){ if(typeof renderTutor==='function') renderTutor(); else $('#main').innerHTML = '<div class="empty"><div class="big">Falta un archivo</div>Para usar el Tutor IA subí el archivo <b>tutor.js</b> y recargá con Ctrl + F5.</div>'; return; }
   if(tab==='lib'){ if(typeof renderLib==='function') renderLib(); else $('#main').innerHTML = '<div class="empty"><div class="big">Falta un archivo</div>Para usar la Biblioteca subí a GitHub el archivo <b>biblioteca.js</b> y el <b>index.html</b> nuevo, y recargá con Ctrl + F5.</div>'; return; }
   if(!courseId){
     if(canEdit()){
@@ -169,7 +171,7 @@ function subscribe(){
   unsubs.forEach(u => u()); unsubs = [];
   data = {plans:[],exams:[],materials:[],tasks:[]};
   if(courseId){
-    visible().filter(k => k!=='gen' && k!=='lib' && k!=='guides').forEach(k => {
+    visible().filter(k => k!=='gen' && k!=='lib' && k!=='guides' && k!=='tutor').forEach(k => {
       unsubs.push(col(k).orderBy('created','desc').onSnapshot(
         s => { data[k] = s.docs.map(x => ({id:x.id, ...x.data()})); render(); },
         err => { console.error(err); $('#role').textContent = 'No se pudieron cargar los datos'; }
