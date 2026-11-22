@@ -3,11 +3,12 @@ const TUTOR = { history: [], key: localStorage.getItem('gemini_key') || '', busy
 
 // 1. Busca las páginas más relevantes en los libros ya cargados (LIB.pages)
 function tutorContext(pregunta) {
-  if (!LIB.loaded || !LIB.pages.length) return { texto: '', fuentes: [] };
+  if (!LIB.loaded || !LIB.pages.length) return { texto: '', fuentes: [], libros: [] };
+  const libros = [...new Set(LIB.pages.map(pg => pg.bt).filter(Boolean))];
   const palabras = (lbNrm(pregunta).match(/[a-z0-9]+/g) || [])
     .filter(w => w.length > 2 && !LB_STOP.has(w))
     .map(lbStem);
-  if (!palabras.length) return { texto: '', fuentes: [] };
+  if (!palabras.length) return { texto: '', fuentes: [], libros };
 
   const Q = { strong: [...new Set(palabras)], weak: [], mode: 'any' };
   const hits = [];
@@ -16,17 +17,17 @@ function tutorContext(pregunta) {
     if (sc > 0) hits.push({ pg, sc });
   }
   hits.sort((a, b) => b.sc - a.sc);
-  const top = hits.slice(0, 5); // Toma las 5 páginas más relevantes
+  const top = hits.slice(0, 6); // Toma las 6 páginas más relevantes
 
   const texto = top.map(h =>
     `--- LIBRO: "${h.pg.bt}" (Página ${h.pg.p}) ---\n${h.pg.t.slice(0, 3500)}`
   ).join('\n\n');
 
   const fuentes = top.map(h => `${h.pg.bt} (pág. ${h.pg.p})`);
-  return { texto, fuentes };
+  return { texto, fuentes, libros };
 }
 
-// 2. Llama a la API gratuita de Gemini
+// 2. Llama a la API gratuita de Gemini (gemini-3.8-flash)
 async function tutorAsk(pregunta) {
   if (!TUTOR.key) {
     alert('Primero pegá tu API Key gratuita de Google AI Studio.');
@@ -39,6 +40,10 @@ async function tutorAsk(pregunta) {
   renderTutor();
 
   const ctx = tutorContext(pregunta);
+  const listaLibros = ctx.libros.length
+    ? `LIBROS DISPONIBLES EN LA BIBLIOTECA:\n- ${ctx.libros.join('\n- ')}\n\n`
+    : '';
+
   const systemPrompt = `Eres un profesor y asistente especializado EXCLUSIVAMENTE en Matemática para nivel secundario.
 REGLAS ESTRICTAS:
 1. Si el usuario pregunta sobre cualquier tema ajeno a la matemática (historia, lengua, cocina, programación general, etc.), rechaza amablemente la consulta diciendo: "Solo estoy habilitado para ayudarte con temas de Matemática y el material cargado en la biblioteca."
@@ -47,11 +52,11 @@ REGLAS ESTRICTAS:
 4. Escribe todas las expresiones matemáticas y fórmulas usando LaTeX ($...$ para fórmulas en línea y $$...$$ para bloques centrados). Explica paso a paso con claridad pedagógica.`;
 
   const promptFinal = ctx.texto
-    ? `FRAGMENTOS ENCONTRADOS EN LA BIBLIOTECA:\n${ctx.texto}\n\nPREGUNTA DEL USUARIO:\n${pregunta}`
-    : `AVISO: No se encontraron coincidencias directas en los PDF cargados.\n\nPREGUNTA DEL USUARIO:\n${pregunta}`;
+    ? `${listaLibros}FRAGMENTOS ENCONTRADOS EN LA BIBLIOTECA:\n${ctx.texto}\n\nPREGUNTA DEL USUARIO:\n${pregunta}`
+    : `${listaLibros}AVISO: No se encontraron coincidencias directas en los PDF cargados.\n\nPREGUNTA DEL USUARIO:\n${pregunta}`;
 
   try {
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(TUTOR.key)}`, {
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${encodeURIComponent(TUTOR.key)}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
