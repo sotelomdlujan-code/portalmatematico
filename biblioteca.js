@@ -272,7 +272,29 @@ async function lbAddFile(file){
   LIB.seen && LIB.seen.delete(id); lbIndex();
   return {title, n, chars, ocr, cloud, big:file.size > LB_MAXPDF};
 }
+const lbMB = f => (f.size / 1048576).toFixed(1).replace('.', ',') + ' MB';
+function lbAskBig(files){
+  const small = files.filter(f => f.size <= LB_MAXPDF), big = files.filter(f => f.size > LB_MAXPDF);
+  return new Promise(res => {
+    const li = arr => arr.map(f => `<div class="share-row"><span>${esc(f.name)}</span><b>${lbMB(f)}</b></div>`).join('');
+    $('#frm').innerHTML = `<h3>Separé tus archivos por tamaño</h3>
+      <p class="note">El límite para guardar el PDF original en la nube es de 20 MB.</p>
+      <h4 style="margin:12px 0 2px">✅ Entran (${small.length})</h4>${small.length ? li(small) : '<p class="note">Ninguno.</p>'}
+      <h4 style="margin:12px 0 2px">⚠️ Pesan más de 20 MB (${big.length})</h4>${li(big)}
+      <p class="note">Los grandes se pueden cargar igual, pero solo se guarda el texto (se pueden buscar, pero no ver ni descargar el PDF). Para tenerlos completos, dividilos o comprimilos y cargalos de nuevo.</p>
+      <div class="acts" style="margin-top:16px;flex-wrap:wrap">${small.length ? `<button class="btn" data-c="fit">Cargar solo los que entran (${small.length})</button>` : ''}<button class="btn soft" data-c="all">Cargar todos (los grandes solo texto)</button><button class="btn soft" data-c="no">Cancelar</button></div>`;
+    const d = $('#dlg'); let out = 'no';
+    d.addEventListener('close', () => res(out), {once:true});
+    $('#frm').querySelectorAll('[data-c]').forEach(b => b.onclick = () => { out = b.dataset.c; d.close(); });
+    d.showModal();
+  });
+}
 async function lbAddFiles(files){
+  if(files.some(f => f.size > LB_MAXPDF)){
+    const c = await lbAskBig(files);
+    if(c === 'no') return;
+    if(c === 'fit') files = files.filter(f => f.size <= LB_MAXPDF);
+  }
   const ok = [], bad = [];
   LIB.cancel = false;
   for(const f of files){
