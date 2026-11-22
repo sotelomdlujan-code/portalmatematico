@@ -612,9 +612,9 @@ const G={tips:true,title:'Evaluación de Matemática',escuela:'',curso:'',fecha:
 
 function one(k,d){const[q,a,f,fa]=GEN[k](d),T=TIPS[k];return{t:k,d,q,a:typeof a==='number'?num(a):a,f:f||'',fa:fa||'',tip:T?PK(T):''}}
 const figW=s=>{const m=/width="(\d+(?:\.\d+)?)"/.exec(s||'');return m?+m[1]:0};
-function build(){const out={},order=shufT(G.temas);['A','B'].forEach(s=>{if(s=='B'&&!G.b)return;const L=[];for(let i=0;i<G.n;i++){const k=order[i%order.length],d=G.dif==3?(i<G.n/3?0:i<2*G.n/3?1:2):G.dif;let e,t=0;do{e=one(k,d)}while(t++<10&&L.some(x=>x.q===e.q));L.push(e)}out[s]=L});G.sets=out;G.cur='A'}
+function build(){const out={},order=(G.plan&&G.plan.length)?G.plan:shufT(G.temas);['A','B'].forEach(s=>{if(s=='B'&&!G.b)return;const L=[];for(let i=0;i<G.n;i++){const k=order[i%order.length],d=G.dif==3?(i<G.n/3?0:i<2*G.n/3?1:2):G.dif;let e,t=0;do{e=one(k,d)}while(t++<10&&L.some(x=>x.q===e.q));L.push(e)}out[s]=L});G.sets=out;G.cur='A'}
 function pts(P,n){const u=Math.round(P*2),b=Math.floor(u/n),r=u-b*n;return Array.from({length:n},(_,i)=>(b+(i<r?1:0))/2)}
-const tn=k=>TOPICS.find(t=>t.k===k).n;
+const tn=k=>(TOPICS.find(t=>t.k===k)||{n:'Ejercicio de mis libros'}).n;
 
 function readCfg(){
   G.title=$('#g-title').value.trim();G.escuela=$('#g-esc').value.trim();G.curso=$('#g-cur').value.trim();G.fecha=$('#g-fec').value;
@@ -646,7 +646,7 @@ function renderGen(){
     <div class="sheet sheet-exam"><div class="sh-head"><div><b>${esc(G.escuela)}</b><div>Matemática${G.curso?' · '+esc(G.curso):''}</div></div><div>${G.fecha?'Fecha: '+fmt(G.fecha):'Fecha: ____ / ____ / ____'}</div></div>
     <h2>${esc(G.title||'Evaluación')}${T}</h2><div class="sh-line">Nombre y apellido: ______________________________ &nbsp; Nota: ______</div>
     <p class="sh-info">Puntaje total: <b>${num(G.puntos)} puntos</b>. Justificá todos los procedimientos. Se valora la prolijidad y el uso correcto del lenguaje matemático.</p>
-    ${(()=>{const vistos={};return ex.map((e,i)=>`<div class="ex"><div class="ex-h"><b>${i+1})</b> <span class="pt">(${num(P[i])} ${P[i]==1?'punto':'puntos'})</span> <button class="rr noprint" data-r="${i}" title="Cambiar este ejercicio">🔄</button></div><div class="ex-body${figW(e.f)>=300?' wide':''}"><div class="ex-q">${e.q}${G.tips!==false&&e.tip&&!vistos[e.t]&&(vistos[e.t]=1)?`<div class="ex-tip">💡 ${e.tip}</div>`:''}</div>${e.f?`<div class="ex-fig">${e.f}</div>`:''}</div><div class="ex-sp" style="height:${60+e.d*30}px"></div></div>`).join('')})()}</div>
+    ${(()=>{const vistos={};return ex.map((e,i)=>`<div class="ex"><div class="ex-h"><b>${i+1})</b> <span class="pt">(${num(P[i])} ${P[i]==1?'punto':'puntos'})</span> ${e.t==='libro'?`<button class="rr noprint" data-x="${i}" title="Quitar este ejercicio">✕</button>`:`<button class="rr noprint" data-r="${i}" title="Cambiar este ejercicio">🔄</button>`}</div><div class="ex-body${figW(e.f)>=300?' wide':''}"><div class="ex-q">${e.q}${G.tips!==false&&e.tip&&!vistos[e.t]&&(vistos[e.t]=1)?`<div class="ex-tip">💡 ${e.tip}</div>`:''}</div>${e.f?`<div class="ex-fig">${e.f}</div>`:''}</div><div class="ex-sp" style="height:${60+e.d*30}px"></div></div>`).join('')})()}</div>
     <div class="sheet sheet-key"><h2>Clave de corrección${T}</h2>${ex.map((e,i)=>`<div class="kr"><b>${i+1})</b> <span class="kt">${tn(e.t)} · ${num(P[i])} pts</span><div>${e.a}</div>${e.fa?`<div class="kfig">${e.fa}</div>`:''}</div>`).join('')}</div>`;
   }
   $('#main').innerHTML=h;
