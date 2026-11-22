@@ -44,6 +44,7 @@ function gxParse(raw){
   cut(/(\d+)\s*(?:ejercicios?|problemas?|actividades)\s*(?:por|para cada|cada)\s*(?:tema|uno|contenido)/,m=>{out.per=+m[1]});
   cut(/(\d+)\s*(?:ejercicios|problemas|actividades|consignas)\b(?!\s*(?:de|sobre|con|del)\b)/,m=>{out.n=+m[1]});
 
+  cut(/(\d+)\s*terminos?\b/,m=>{out.terminos=Math.min(7,Math.max(2,+m[1]))});
   /* temas */
   const found={},consider=(k,i)=>{if(i>=0&&(found[k]===undefined||i<found[k]))found[k]=i};
   const has=k=>TOPICS.some(t=>t.k===k);
@@ -71,6 +72,15 @@ function gxParse(raw){
     if(m){const after=seg.slice(m.index+m[0].length);if(!/[,;.]/.test(after)&&after.length<=45)c=+m[1]}
     out.topics.push({k,count:c,idx});
   });
+  /* detalles de cada tema: problema, ecuación, propiedades */
+  const T0=out.topics,PROB=/\bcomo\s+problemas?\b|en forma de problemas?|contextualizad|con enunciado|problemas?\s+(?:con\s+)?(?:enunciado|contexto)|situaciones?\s+(?:problematicas?|reales)/,
+    EC=/(?:\bcon|en forma de|plantead\w+(?:\s+(?:como|en forma de|con))?|\bcomo|usando|mediante)\s+(?:(?:una|las|unas)\s+)?ecuacion/,PRP=/\bpropiedad(?:es)?\b|\bapliqu\w+/;
+  T0.forEach((t,j)=>{if(t.k==='ecuacion1')return;const nx=T0[j+1],nb=T0.slice(j+1).find(x=>x.k!=='ecuacion1'),dl=/[,;.:]/.exec(n.slice(t.idx)),end=Math.min(nb?nb.idx:1e9,dl?t.idx+dl.index:1e9),cl=n.slice(t.idx,end);t.mods={};
+    if(PROB.test(cl))t.mods.problema=true;if(EC.test(cl))t.mods.ecuacion=true;if(PRP.test(cl))t.mods.props=true;
+    if(t.k==='comb_num'&&out.terminos)t.mods.terminos=out.terminos;
+    if(t.mods.ecuacion&&nx&&nx.k==='ecuacion1'&&!nx.count&&nx.idx<end){nx.drop=true;
+      if(t.k==='pitagoras')t.k='pit_ec';else if(t.k==='geometria')t.k='comb_geo_ec'}});
+  out.topics=T0.filter(t=>!t.drop);
   // "5 ejercicios de A, B y C": el número del primer tema es el total
   if(out.n==null&&out.topics.length>1&&out.topics[0].count&&out.topics.slice(1).every(t=>!t.count)){
     const pre=n.slice(Math.max(0,out.topics[0].idx-30),out.topics[0].idx);
@@ -92,6 +102,11 @@ function gxApply(P){
   for(let i=0;rem>0;i++,rem--)counts[pool[i%pool.length]]++;
   const plan=[];T.forEach((t,i)=>{for(let j=0;j<counts[i];j++)plan.push(t.k)});
   G.plan=plan.slice(0,20);G.temas=[...new Set(G.plan)];G.n=G.plan.length;
+  G.mods={};P.notes=[];
+  const SUP={problema:['pitagoras','pit_ec','comb_geo_ec'],ecuacion:['angulos_rel','angulos_par'],terminos:['comb_num'],props:['comb_num']},LBL={problema:'como problema',ecuacion:'con ecuaciones',terminos:'términos',props:'con propiedades'};
+  T.forEach(t=>{const m=t.mods||{},ok={};Object.keys(m).forEach(f=>{if(f==='ecuacion'&&(t.k==='pit_ec'||t.k==='comb_geo_ec'))return;
+    if(SUP[f]&&SUP[f].includes(t.k))ok[f]=m[f];else P.notes.push(`“${LBL[f]}” en ${tn(t.k)}`)});
+    if(Object.keys(ok).length)G.mods[t.k]=ok;t.okmods=ok});
   if(P.anio)G.anio=P.anio;if(P.dif!=null)G.dif=P.dif;if(P.puntos)G.puntos=Math.min(100,Math.max(1,P.puntos));if(P.b)G.b=true;if(P.title)G.title=P.title;
   if(G.temas.some(k=>!TOPICS.find(t=>t.k===k).y.includes(+G.anio)))G.all=true;
   return counts;
@@ -171,8 +186,9 @@ function gxBind(){
 }
 function gxSummary(P,counts){
   const y=G.anio+'.º año',d=['fácil','media','difícil','progresiva'][G.dif];
-  const tl=P.topics.map((t,i)=>`${esc(tn(t.k))}${counts?` ×${counts[i]}`:''}`).join('; ');
-  return `<b>Entendí:</b> ${y} · dificultad ${d} · ${G.n} ejercicio(s) · ${num(G.puntos)} puntos${G.b?' · con Tema B':''}<br><b>Temas:</b> ${tl}<br>Si algo no es lo que querías, cambialo abajo o reescribí el pedido.`;
+  const md=t=>{const m=t.okmods||{},r=[];if(m.problema)r.push('como problema');if(m.ecuacion)r.push('con ecuaciones');if(m.terminos)r.push(m.terminos+' términos');if(m.props)r.push('aplicando propiedades');return r.length?` (${r.join(', ')})`:''};
+  const tl=P.topics.map((t,i)=>`${esc(tn(t.k))}${md(t)}${counts?` ×${counts[i]}`:''}`).join('; ');
+  return `<b>Entendí:</b> ${y} · dificultad ${d} · ${G.n} ejercicio(s) · ${num(G.puntos)} puntos${G.b?' · con Tema B':''}<br><b>Temas:</b> ${tl}<br>${P.notes&&P.notes.length?`<br>⚠️ No pude aplicar: ${P.notes.map(esc).join('; ')}. Esos temas salen con ejercicios comunes.`:''}<br>Si algo no es lo que querías, cambialo abajo o reescribí el pedido.`;
 }
 function gxRun(){
   GX.text=document.getElementById('gx-t').value;GX.lib=document.getElementById('gx-lib').checked;
@@ -180,7 +196,7 @@ function gxRun(){
   const P=gxParse(GX.text);GX.cands=null;GX.err='';
   const useLib=(GX.lib||P.wantsLib||P.libonly);
   if(P.libonly){
-    G.plan=null;G.sets=null;if(P.title)G.title=P.title;if(P.puntos)G.puntos=P.puntos;if(P.b)G.b=true;
+    G.plan=null;G.mods=null;G.sets=null;if(P.title)G.title=P.title;if(P.puntos)G.puntos=P.puntos;if(P.b)G.b=true;
     GX.msg='<b>Entendí:</b> armar el examen solo con ejercicios de tus libros. Marcá abajo los que quieras sumar.';
     renderGen();gxSearch(P);return;
   }
@@ -194,6 +210,8 @@ function gxRun(){
 }
 
 /* ---------- se conecta a la pantalla del generador ---------- */
+const _one=one;
+one=function(k,d){GXM.cur=(G.mods&&G.mods[k])||null;try{return _one(k,d)}finally{GXM.cur=null}};
 const _rg=renderGen;
 renderGen=function(){
   _rg();
@@ -203,8 +221,8 @@ renderGen=function(){
   const go=document.getElementById('g-go');
   if(go)go.onclick=()=>{readCfg();if(!G.temas.length){alert('Elegí al menos un tema.');return}
     const u=[...new Set(G.plan||[])];
-    if(!(G.plan&&G.plan.length&&u.length===G.temas.length&&u.every(k=>G.temas.includes(k))&&G.n===G.plan.length))G.plan=null;
+    if(!(G.plan&&G.plan.length&&u.length===G.temas.length&&u.every(k=>G.temas.includes(k))&&G.n===G.plan.length)){G.plan=null;G.mods=null}
     build();renderGen()};
 };
-window.gxParse=gxParse;
+window.gxParse=gxParse;window.gxApply=gxApply;
 })();

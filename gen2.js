@@ -5,10 +5,13 @@
    - Temas combinados: perímetro y área con ecuaciones, Pitágoras con ecuaciones,
      ejercicios combinados (enteros, potencias, raíces y propiedad distributiva)
    Las respuestas se calculan por código; si un ejercicio no cumple las condiciones, se vuelve a sortear. */
+var GXM={cur:null};
 (function(){
 const need=c=>{if(!c)throw {gx:1}};
 const mk=fn=>()=>{for(let i=0;i<80;i++){try{return fn()}catch(e){if(!(e&&e.gx))throw e}}throw new Error('No se pudo armar el ejercicio')};
-const def=(k,pools)=>{GEN[k]=d=>PK(pools[Math.min(d,pools.length-1)])()};
+const POOLS={};
+const mkA=fn=>(...a)=>{for(let i=0;i<80;i++){try{return fn(...a)}catch(e){if(!(e&&e.gx))throw e}}throw new Error('No se pudo armar el ejercicio')};
+const def=(k,pools)=>{POOLS[k]=pools;GEN[k]=d=>PK(pools[Math.min(d,pools.length-1)])()};
 const sg2=n=>n<0?`− ${-n}`:`+ ${n}`;
 const sb=(l,t)=>`<div class="sub"><b>${l})</b> ${t}</div>`;
 const cx=k=>k===1?'x':k===-1?'−x':num(k)+'x';
@@ -190,6 +193,58 @@ const TPL2=[
  ()=>{const a=R(2,4),b=R(2,3),c=nzr(-5,5),s=rsq(),d=R(1,9);return[`${a}<sup>${b}</sup> · ${pn(c)} − √${s*s} + ${d*d} ÷ ${d}`,a**b*c-s+d]}];
 const combo=tpls=>mk(()=>{const idx=shufT(tpls.map((_,i)=>i)).slice(0,3),g=idx.map(i=>tpls[i]());return[`Resolvé aplicando la jerarquía de las operaciones (paréntesis y corchetes primero, luego potencias y raíces, después multiplicaciones y divisiones y, por último, sumas y restas). Usá la propiedad distributiva donde convenga.${g.map((x,i)=>sb('abc'[i],`<b>${x[0]}</b>`)).join('')}`,g.map((x,i)=>`${'abc'[i]}) ${num(x[1])}`).join('; ')]});
 def('comb_num',[[combo(TPL0)],[combo(TPL1)],[combo(TPL2)]]);
+
+
+/* ================= Variantes pedidas: problemas, ecuaciones, N términos y propiedades ================= */
+const TRI4=[[3,4,5],[5,12,13],[8,15,17],[7,24,25],[6,8,10],[9,12,15]];
+const supE=(b,e)=>`${pn(b)}<sup>${e}</sup>`;
+const TERM={
+ prod:d=>{const b=PK(d==0?[2,3]:[2,3,-2,-3]),m=R(2,3),n=R(2,3);need(m+n<=5);const v=b**(m+n);need(Math.abs(v)<=300);return[`${supE(b,m)} · ${supE(b,n)}`,v,`${supE(b,m)} · ${supE(b,n)} = ${supE(b,m+n)} = ${num(v)}`]},
+ coc:d=>{const b=PK(d==0?[2,3]:[2,3,-2,-3]),n=R(2,3),m=n+R(1,2);return[`${supE(b,m)} ÷ ${supE(b,n)}`,b**(m-n),`${supE(b,m)} ÷ ${supE(b,n)} = ${supE(b,m-n)} = ${num(b**(m-n))}`]},
+ pot:d=>{const b=PK(d==0?[2,3]:[2,3,-2,-3]),m=R(2,3),v=b**(m*2);need(Math.abs(v)<=300);return[`(${supE(b,m)})<sup>2</sup>`,v,`(${supE(b,m)})<sup>2</sup> = ${supE(b,m*2)} = ${num(v)}`]},
+ prodp:()=>{const a=R(2,4),b=R(2,3),v=(a*b)**2;return[`(${a} · ${b})<sup>2</sup>`,v,`(${a} · ${b})<sup>2</sup> = ${a}<sup>2</sup> · ${b}<sup>2</sup> = ${a*a} · ${b*b} = ${v}`]},
+ raiz:d=>{if(d>=2&&R(0,1)){const s=R(2,5);return[`∛${s**3}`,s,`∛${s**3} = ${s}`]}const s=R(2,12);return[`√${s*s}`,s,`√${s*s} = ${s}`]},
+ raiz2:()=>{const a=R(2,5),b=R(2,4);return[`√${a*a} · √${b*b}`,a*b,`√${a*a} · √${b*b} = √(${a*a} · ${b*b}) = ${a*b}`]},
+ dist:()=>{const a=nzr(-6,6),b=nzr(-9,9),c=nzr(-9,9);need(b+c!==0);return[`${pn(a)} · (${num(b)} ${sg2(c)})`,a*(b+c),`distributiva: ${pn(a)} · ${pn(b)} + ${pn(a)} · ${pn(c)} = ${num(a*b)} ${sg2(a*c)} = ${num(a*(b+c))}`]},
+ simple:()=>{const a=nzr(-5,5),b=nzr(-4,4);return[`${pn(a)} · ${pn(b)}<sup>2</sup>`,a*b*b,`${pn(a)} · ${pn(b)}<sup>2</sup> = ${pn(a)} · ${b*b} = ${num(a*b*b)}`]}
+};
+const termExpr=mkA((d,N,props)=>{
+  const kinds=props?['prod','coc','pot','prodp','raiz','raiz2','dist']:['prod','coc','raiz','dist','simple','pot'],must=['raiz','dist',props?'prod':'pot'];
+  let list=must.slice(0,Math.min(N,3));while(list.length<N)list.push(PK(kinds));list=shufT(list);
+  const g=list.map(k=>TERM[k](d)),sg=g.map((_,i)=>i?(R(0,1)?1:-1):1),total=g.reduce((a,x,i)=>a+sg[i]*x[1],0);need(Math.abs(total)<=400);
+  const html=g.map((x,i)=>i?`${sg[i]>0?'+':'−'} ${x[0]}`:x[0]).join(' '),sumTxt=g.map((x,i)=>i?`${sg[i]>0?'+':'−'} ${pn(x[1])}`:num(x[1])).join(' ');
+  return{html,total,ex:g.map(x=>x[2]).join('; '),sumTxt};
+});
+const wrap=(k,fn)=>{const prev=GEN[k];GEN[k]=d=>fn(d,prev)};
+wrap('comb_num',(d,prev)=>{const m=GXM.cur;if(!(m&&(m.terminos||m.props)))return prev(d);
+  const N=Math.min(7,Math.max(2,m.terminos||4)),e=termExpr(d,N,!!m.props);
+  return[`Resolvé aplicando ${m.props?'las <b>propiedades de la potenciación</b> (producto y cociente de potencias de igual base, potencia de potencia, potencia de un producto), de la <b>radicación</b> y la <b>propiedad distributiva</b> donde corresponda':'la jerarquía de las operaciones'}. La expresión tiene ${N} términos. Escribí los pasos:<div class="sub"><b>${e.html}</b></div>`,`Término a término: ${e.ex}. Se suman: ${e.sumTxt} = ${num(e.total)}`]});
+wrap('angulos_par',(d,prev)=>prev(GXM.cur&&GXM.cur.ecuacion?Math.max(d,1):d));
+wrap('angulos_rel',(d,prev)=>prev(GXM.cur&&GXM.cur.ecuacion?Math.max(d,1):d));
+
+/* Problemas de Pitágoras con enunciado */
+const trip=()=>{const[a,b,c]=PK(TRI4);return[a,b,c,R(1,3)]};
+const PP={
+ esc:mk(()=>{const[a,b,c,k]=trip();return[`Una escalera de ${c*k} m de largo se apoya contra una pared. El pie de la escalera está a ${a*k} m de la pared. ¿A qué altura de la pared llega la escalera?`,`h² = ${c*k}² − ${a*k}² = ${(c*k)**2} − ${(a*k)**2} = ${(b*k)**2} → h = ${b*k} m`,FIG.rtri(a*k,b*k,{b:`${a*k} m`,l:'h',h:`${c*k} m`})]}),
+ poste:mk(()=>{const[a,b,c,k]=trip();return[`Un poste de ${b*k} m de altura se sujeta con un cable tenso desde su extremo superior hasta un punto del suelo ubicado a ${a*k} m de su base. ¿Cuánto mide el cable?`,`c² = ${b*k}² + ${a*k}² = ${(c*k)**2} → c = ${c*k} m`,FIG.rtri(a*k,b*k,{b:`${a*k} m`,l:`${b*k} m`,h:'cable'})]}),
+ rampa:mk(()=>{const[a,b,c,k]=trip();return[`Una rampa sube ${b*k} m de altura y su base horizontal mide ${a*k} m. ¿Cuál es la longitud de la rampa (la parte inclinada)?`,`L² = ${b*k}² + ${a*k}² = ${(c*k)**2} → L = ${c*k} m`,FIG.rtri(a*k,b*k,{b:`${a*k} m`,l:`${b*k} m`,h:'L'})]}),
+ camino:mk(()=>{const[a,b,c,k]=trip();return[`Para ir de su casa a la escuela, Lucía camina ${a*k} m hacia el este y luego ${b*k} m hacia el norte. Si pudiera ir en línea recta, ¿cuántos metros recorrería? ¿Cuántos metros se ahorraría?`,`Línea recta: √(${a*k}² + ${b*k}²) = ${c*k} m. Ahorra ${(a+b)*k} − ${c*k} = ${(a+b-c)*k} m`]}),
+ cancha:mk(()=>{const[a,b,c,k]=trip();return[`La diagonal de una cancha rectangular mide ${c*k} m y uno de sus lados mide ${a*k} m. Calculá la medida del otro lado y el perímetro de la cancha.`,`Otro lado: √(${c*k}² − ${a*k}²) = ${b*k} m. Perímetro = 2 · (${a*k} + ${b*k}) = ${2*(a+b)*k} m`]}),
+ tele:mk(()=>{const[a,b,c,k]=trip();return[`La pantalla de un televisor tiene una diagonal de ${c*k*5} cm y un ancho de ${a*k*5} cm. ¿Cuánto mide su alto? ¿Cuál es el área de la pantalla?`,`Alto: √(${c*k*5}² − ${a*k*5}²) = ${b*k*5} cm. Área = ${a*k*5} · ${b*k*5} = ${a*b*k*k*25} cm²`]}),
+ arbol:mk(()=>{const[a,b,c,k]=trip();return[`Un árbol se quebró por el viento: la parte que quedó en pie mide ${a*k} m y la punta, al caer, tocó el suelo a ${b*k} m del pie del árbol. ¿Cuánto medía el árbol antes de quebrarse?`,`Parte quebrada: √(${a*k}² + ${b*k}²) = ${c*k} m. Altura original = ${a*k} + ${c*k} = ${(a+c)*k} m`]}),
+ isos:mk(()=>{const[a,b,c,k]=trip();return[`Un triángulo isósceles tiene lados iguales de ${c*k} cm y base de ${2*a*k} cm. Calculá su altura (dividí el triángulo en dos triángulos rectángulos) y su área.`,`Altura: √(${c*k}² − ${a*k}²) = ${b*k} cm. Área = ${2*a*k} · ${b*k} ÷ 2 = ${a*b*k*k} cm²`]}),
+ rombo:mk(()=>{const[a,b,c,k]=trip();return[`Las diagonales de un rombo miden ${2*a*k} cm y ${2*b*k} cm. Calculá la medida de su lado y su perímetro (las diagonales se cortan en ángulo recto y por su punto medio).`,`Lado: √(${a*k}² + ${b*k}²) = ${c*k} cm. Perímetro = 4 · ${c*k} = ${4*c*k} cm`]})};
+const PPOOL=[[PP.esc,PP.poste,PP.rampa,PP.camino],[PP.cancha,PP.tele,PP.arbol],[PP.isos,PP.rombo,PP.arbol,PP.cancha]];
+wrap('pitagoras',(d,prev)=>GXM.cur&&GXM.cur.problema?PK(PPOOL[Math.min(d,2)])():prev(d));
+/* Pitágoras con ecuaciones, planteado como problema */
+const PEC={
+ rampa:mk(()=>{const[a,b,c]=PK(TRI4.slice(0,4)),k=R(1,4);return[`Una rampa tiene una base horizontal de <b>${a}x</b> m y una altura de <b>${b}x</b> m. Su longitud (la parte inclinada) es de <b>${c*k} m</b>. Planteá una ecuación y hallá x. ¿Qué altura alcanza la rampa?`,`(${a}x)² + (${b}x)² = ${c*k}² → ${a*a+b*b}x² = ${(c*k)**2} → x = ${k}. Altura = ${b*k} m; base = ${a*k} m`]}),
+ cancha:mk(()=>{const[a,b,c]=PK(TRI4.slice(0,4)),k=R(1,4);return[`Una cancha rectangular tiene lados de <b>${a}x</b> m y <b>${b}x</b> m, y su diagonal mide <b>${c*k} m</b>. Hallá x, las dimensiones de la cancha y cuánto alambre se necesita para cercarla (perímetro).`,`${a*a+b*b}x² = ${(c*k)**2} → x = ${k}. Dimensiones: ${a*k} m × ${b*k} m; perímetro = ${2*(a+b)*k} m`]}),
+ esc:mk(()=>{const[a,b,c]=PK(PYT);const d=b-a;need(d>0&&d<=17);return[`El pie de una escalera de <b>${c} m</b> está a <b>x</b> m de la pared y la escalera alcanza una altura de <b>(x + ${d}) m</b>. Planteá la ecuación, hallá x y calculá la altura que alcanza.`,`x² + (x + ${d})² = ${c}² → 2x² + ${2*d}x ${sg2(d*d-c*c)} = 0 → x² + ${d}x − ${a*b} = 0 → (x − ${a})(x + ${b}) = 0. x = ${a} m (se descarta −${b}). La escalera alcanza ${b} m`,FIG.rtri(a,b,{b:'x',l:`x + ${d}`,h:`${c} m`})]})};
+wrap('pit_ec',(d,prev)=>GXM.cur&&GXM.cur.problema?(d>=2?PEC.esc():PK([PEC.rampa,PEC.cancha])()):prev(d));
+/* Perímetro y área con ecuaciones, planteado como problema */
+const GEO_H=mk(()=>{const x=R(2,12),a=R(1,6),w=R(2,8),P=2*(x+a+w),c=PK(COSA);return[`Se quiere cercar un ${c} rectangular de <b>(x + ${a}) m</b> de largo y <b>${w} m</b> de ancho, y se usaron <b>${P} m</b> de alambre. Planteá una ecuación y hallá x. ¿Cuál es la superficie del ${c}?`,`2 · [(x + ${a}) + ${w}] = ${P} → x = ${x}. Largo = ${x+a} m; superficie = ${(x+a)*w} m²`,rectLab(`x + ${a} m`,`${w} m`)]});
+wrap('comb_geo_ec',(d,prev)=>{if(!(GXM.cur&&GXM.cur.problema))return prev(d);const P=POOLS.comb_geo_ec;return d==0?GEO_H():d==1?P[1][2]():P[2][0]()});
 
 /* ---------- Registro de los temas ---------- */
 [['clas_fig','Clasificación de figuras (triángulos y cuadriláteros)',[1,2,3]],
