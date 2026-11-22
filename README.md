@@ -55,6 +55,34 @@ Al ingresar como docente aparece la pestaña **Generar examen**:
 
 **Si ya habías subido la versión anterior:** reemplazá `index.html` y `app.js`, y agregá el archivo nuevo `gen.js`. `config.js` y las reglas de Firebase no cambian.
 
+## 🧮 Generador de exámenes: temas por año
+
+El generador cubre **35 temas** de 1.º a 6.º año (borrador basado en los NAP de Matemática; ajustalo según tu diseño curricular). Cada tema tiene varios tipos de ejercicio por nivel de dificultad, incluyendo problemas con enunciado y ejercicios de justificar. Las respuestas se calculan por código.
+
+- **Marcar todos / Ninguno** selecciona los temas de un año de una vez.
+- Si marcás más temas que ejercicios, el generador **sorteá qué temas entran**, y evita repetir enunciados dentro de un mismo examen.
+- Si querés ver los temas de otros años, tildá “Mostrar temas de todos los años”.
+
+## 📖 Biblioteca de PDF y libros
+
+En el menú de la izquierda, **Biblioteca** guarda tus PDF y libros y busca por tema en todos a la vez. **Es solo para vos**: los alumnos no la ven.
+
+1. **Agregar PDF:** elegí uno o varios archivos. La página lee el texto de cada página. Si el PDF es una imagen (escaneado o con letras dibujadas), te ofrece leerlo con **OCR**, que tarda varios minutos y necesita internet.
+2. **Buscar:** elegí un tema de la lista (con sus sinónimos) o escribí lo que buscás. Se puede usar “comillas” para una frase exacta y elegir si deben aparecer todas las palabras o alguna. También podés elegir en qué documentos buscar.
+3. **Resultados:** aparecen agrupados por libro y por página, con las palabras encontradas resaltadas. Cada resultado tiene **Ver la página** (muestra el PDF original) y **Ver texto completo**.
+4. **Imprimir:** marcá las páginas que te sirven y tocá “Imprimir la selección” para armar un apunte.
+
+Cómo se guarda: el **texto** queda en tu base de datos (Firestore) y se puede consultar desde cualquier dispositivo; el **PDF original** queda solo en el navegador donde lo cargaste (el plan gratis de Firebase no permite guardar archivos). Desde otro dispositivo vas a ver el texto, pero no la página dibujada.
+
+**Reglas de Firebase:** esta versión agrega permisos para la biblioteca. Pegá de nuevo el contenido de `firestore.rules` en Firestore → **Reglas** → **Publicar**.
+
+## 🖼️ Figuras, recordatorios y consignas
+
+- **Figuras:** los ejercicios de geometría, Pitágoras, ángulos, semejanza, cuerpos, trigonometría, plano cartesiano, funciones, estadística, fracciones, porcentajes, enteros y probabilidad traen su dibujo (se imprimen en blanco y negro). La clave de corrección muestra la figura resuelta cuando corresponde (por ejemplo, el gráfico de una función o los intervalos marcados en la recta).
+- **Recordatorios:** debajo de la consigna aparece una fórmula o definición útil (“Recordá: …”), una vez por tema en cada examen. Se pueden apagar con la casilla “Incluir recordatorios en las consignas”.
+- **Intervalos y desigualdades:** tema nuevo con apartados a), b), c), líneas punteadas, rectas numéricas para marcar y casilleros con ∈, ∉, ⊂ y ⊄.
+- **Problemas contextualizados de porcentaje:** descuentos, recargos en cuotas, entradas de cine, torneos y precio original.
+
 ## 🏫 Escuelas, cursos y link para alumnos
 
 En el panel de la izquierda (al ingresar como docente) están los selectores **Escuela** y **Curso**:
