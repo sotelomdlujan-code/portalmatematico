@@ -158,19 +158,48 @@ async function lbDownload(id, btn){
   const t = btn && btn.textContent; if(btn){ btn.disabled = true; btn.textContent = 'Descargando…'; }
   try {
     const f = await lbGetPdf(id);
-    if(!f) alert('Este documento no tiene el PDF original guardado en la nube.' + (lbRO() ? '' : ' Tocá “☁️ Guardar PDF” para subirlo.'));
+    if(!f) alert('Este documento no tiene el PDF original guardado en la nube.' + (lbRO() ? '' : ' Tocá “☁️ Subir PDF” para subirlo.'));
     else lbSave(f, bk.title.replace(/[\\/:*?"<>|]+/g, ' ') + '.pdf');
   } catch(e){ console.error(e); alert('No se pudo descargar. Revisá tu conexión.'); }
   if(btn){ btn.disabled = false; btn.textContent = t; }
 }
+async function lbUploadFile(id, f){
+  const bk = LIB.books.find(x => x.id === id); if(!bk || !f) return false;
+  if(f.size > LB_MAXPDF){ alert('“' + f.name + '” pesa más de 20 MB y no entra en la nube gratis. Podés comprimirlo (por ejemplo con ilovepdf.com) y volver a intentar.'); return false; }
+  try {
+    const pdfjs = await lbPdf(), d = await pdfjs.getDocument({data:new Uint8Array(await f.arrayBuffer())}).promise, n = bk.npages || (bk.pages || []).length;
+    if(n && d.numPages !== n && !confirm('Ese PDF tiene ' + d.numPages + ' páginas y “' + bk.title + '” tiene ' + n + '. Si no es el mismo archivo, la búsqueda mostraría páginas equivocadas. ¿Lo subís igual?')) return false;
+  } catch(e){ alert('No se pudo leer ese archivo como PDF.'); return false; }
+  try { lbProg('Subiendo “' + bk.title + '” a la nube…', 0); await lbStorePdf(id, f, p => lbProg('Subiendo “' + bk.title + '” a la nube…', p)); return true; }
+  catch(e){ console.error(e); return false; }
+}
 async function lbUploadLocal(id){
   const bk = LIB.books.find(x => x.id === id); if(!bk) return;
   let f = null; try { f = await lbDB.get('files', id); } catch(e){}
-  if(!f){ alert('El PDF original de “' + bk.title + '” no está en este navegador. Volvé a cargarlo con “Agregar PDF” (borrá antes el anterior) o hacelo desde el navegador donde lo cargaste la primera vez.'); return; }
-  if(f.size > LB_MAXPDF){ alert('Este PDF pesa más de 20 MB y no entra en la nube gratis. Podés comprimirlo (por ejemplo con ilovepdf.com) y volver a cargarlo.'); return; }
-  try { lbProg('Subiendo “' + bk.title + '” a la nube…', 0); await lbStorePdf(id, f, p => lbProg('Subiendo “' + bk.title + '” a la nube…', p)); LIB.note = '“' + bk.title + '” quedó guardado en la nube.'; }
-  catch(e){ console.error(e); LIB.note = 'No se pudo subir el PDF. Revisá tu conexión.'; }
-  lbProgEnd(); renderLib();
+  if(f){
+    const ok = await lbUploadFile(id, f);
+    LIB.note = ok ? '“' + bk.title + '” quedó guardado en la nube y ya se puede ver y descargar desde cualquier dispositivo.' : 'No se pudo subir el PDF. Revisá tu conexión.';
+    lbProgEnd(); renderLib(); return;
+  }
+  // este navegador no tiene el original: se elige el archivo desde la computadora o el celular
+  const inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'application/pdf,.pdf';
+  inp.onchange = async () => {
+    const ok = inp.files[0] ? await lbUploadFile(id, inp.files[0]) : false;
+    if(inp.files[0]) LIB.note = ok ? '“' + bk.title + '” quedó guardado en la nube y ya se puede ver y descargar desde cualquier dispositivo.' : 'No se subió el PDF.';
+    lbProgEnd(); renderLib();
+  };
+  inp.click();
+}
+async function lbUploadAll(){
+  const pend = LIB.books.filter(b => !b.hasPdf); let ok = 0; const miss = [];
+  for(const b of pend){
+    let f = null; try { f = await lbDB.get('files', b.id); } catch(e){}
+    if(!f){ miss.push(b.title); continue; }
+    if(await lbUploadFile(b.id, f)) ok++;
+  }
+  lbProgEnd();
+  LIB.note = (ok ? 'Se subieron ' + ok + ' PDF a la nube. ' : '') + (miss.length ? 'Estos no están en este navegador (tocá “☁️ Guardar PDF” en cada uno y elegí el archivo): ' + miss.join('; ') + '.' : '');
+  renderLib();
 }
 
 /* ---------- lectura de PDF ---------- */
@@ -342,7 +371,8 @@ function renderLib(){
   </div>
   <div id="lb-out" class="lib-ui"></div>
   <h3 class="lb-h lib-ui">Documentos (${LIB.books.length})</h3>
-  <div class="lb-docs lib-ui">${LIB.books.length ? LIB.books.map(b => `<div class="lb-doc"><div><b>${esc(b.title)}</b><div class="lb-meta">${b.npages || (b.pages || []).length} páginas${b.ocr ? ' · OCR' : ''}${b.hasPdf ? '' : ' · sin PDF en la nube'}</div></div><div><button class="btn soft" data-open="${b.id}">Ver</button> ${b.hasPdf ? `<button class="btn soft" data-dl="${b.id}">⬇ Descargar</button>` : (RO ? '' : `<button class="btn soft" data-up="${b.id}">☁️ Guardar PDF</button>`)}${RO ? '' : ` <button class="ib" data-ren="${b.id}" title="Cambiar nombre">✏️</button> <button class="ib" data-del="${b.id}" title="Borrar">🗑</button>`}</div></div>`).join('') : `<div class="empty"><div class="big">${RO ? 'Todavía no hay documentos' : 'Todavía no cargaste documentos'}</div>${RO ? '' : 'Tocá “Agregar PDF” para subir tus libros, guías y apuntes.'}</div>`}</div>
+  ${!RO && LIB.books.some(b => !b.hasPdf) ? `<div class="lb-note lib-ui"><b>${LIB.books.filter(b => !b.hasPdf).length} documento(s) no tienen el PDF original en la nube</b>, por eso solo se ven desde el navegador donde los cargaste. Tocá “☁️ Subir PDF” en cada uno (si no está en este navegador te pide elegir el archivo), o <button class="btn soft" id="lb-upall">Subir todos los que pueda</button></div>` : ''}
+  <div class="lb-docs lib-ui">${LIB.books.length ? LIB.books.map(b => `<div class="lb-doc"><div><b>${esc(b.title)}</b><div class="lb-meta">${b.npages || (b.pages || []).length} páginas${b.ocr ? ' · OCR' : ''}${b.hasPdf ? '' : ' · PDF sin subir a la nube'}</div></div><div><button class="btn soft" data-open="${b.id}">Ver</button> ${b.hasPdf ? `<button class="btn soft" data-dl="${b.id}">⬇ Descargar</button>` : (RO ? '' : `<button class="btn" data-up="${b.id}">☁️ Subir PDF</button>`)}${RO ? '' : ` <button class="ib" data-ren="${b.id}" title="Cambiar nombre">✏️</button> <button class="ib" data-del="${b.id}" title="Borrar">🗑</button>`}</div></div>`).join('') : `<div class="empty"><div class="big">${RO ? 'Todavía no hay documentos' : 'Todavía no cargaste documentos'}</div>${RO ? '' : 'Tocá “Agregar PDF” para subir tus libros, guías y apuntes.'}</div>`}</div>
   ${RO ? '' : '<details class="gd-box lib-ui" id="lb-sharebox"><summary><b>👥 Compartir la biblioteca (solo lectura)</b></summary><div id="lb-share"><p class="note">Cargando…</p></div></details>'}
   <div class="sheet sheet-lib" id="lb-print"></div>`;
   if(!RO){
@@ -353,6 +383,7 @@ function renderLib(){
     document.querySelectorAll('[data-del]').forEach(b => b.onclick = () => lbDelete(b.dataset.del));
     document.querySelectorAll('[data-up]').forEach(b => b.onclick = () => lbUploadLocal(b.dataset.up));
     lbShareRender();
+    const ua = document.getElementById('lb-upall'); if(ua) ua.onclick = lbUploadAll;
   }
   const go = () => {
     LIB.q.topic = document.getElementById('lb-topic').value; LIB.q.text = document.getElementById('lb-q').value;

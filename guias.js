@@ -40,7 +40,7 @@ const wins = t => String(t).replace(/[^\x20-\x7E\xA0-\xFF]/g, '');
 async function guideBuild(){
   const P = await guidePdfLib(), out = await P.PDFDocument.create(), src = {};
   const missing = [...new Set(GUIDE.items.map(i => i.b))].filter(b => !(LIB.books.find(x => x.id === b) || {}).hasPdf && true);
-  for(const b of missing){ let f = null; try { f = await lbDB.get('files', b); } catch(e){} if(!f) throw new Error('Falta el PDF original de “' + bookTitle(b) + '”. En la Biblioteca tocá “☁️ Guardar PDF” (desde el navegador donde lo cargaste).'); }
+  for(const b of missing){ let f = null; try { f = await lbDB.get('files', b); } catch(e){} if(!f) throw new Error('Falta el PDF original de “' + bookTitle(b) + '”. En la Biblioteca tocá “☁️ Subir PDF”.'); }
   if(GUIDE.cover){
     const font = await out.embedFont(P.StandardFonts.HelveticaBold), pg = out.addPage([595, 842]);
     const words = wins(GUIDE.title || 'Guía').split(/\s+/), lines = []; let cur = '';
