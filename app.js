@@ -14,7 +14,8 @@ const SECTIONS = {
   materials: {label:'Material', ico:'📚', teacher:false, lead:'Apuntes, libros y recursos para estudiar.', empty:'Todavía no hay material', fields:[
     ['title','Título','text'],['descripcion','Descripción','area']]},
   tasks: {label:'Tareas', ico:'🌟', teacher:false, lead:'Lo que tenés para resolver y la fecha de entrega.', empty:'Todavía no hay tareas', fields:[
-    ['title','Título','text'],['entrega','Fecha de entrega','date'],['consigna','Consigna','area']]}
+    ['title','Título','text'],['entrega','Fecha de entrega','date'],['consigna','Consigna','area']]},
+  consultas: {label:'Consultas', ico:'💬', teacher:false, lead:'Dejale tus dudas al profe sobre los temas o tareas del curso.', empty:'Todavía no hay consultas', fields:[]}
 };
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -71,6 +72,21 @@ function render(){
     }
     return;
   }
+  if(tab==='consultas'){
+    if(window.AulaConsultas){
+      AulaConsultas.render({
+        main: $('#main'),
+        db: fs,
+        canReply: canEdit(),
+        courseId,
+        schoolName: canEdit() ? spaceName() : (studentCourse?.escuela || ''),
+        courseName: canEdit() ? courseName() : (studentCourse?.name || '')
+      });
+    } else {
+      $('#main').innerHTML = '<div class="empty"><div class="big">Falta un archivo</div>Subí <b>consultas.js</b> a GitHub y recargá con Ctrl + F5.</div>';
+    }
+    return;
+  }
   const S = SECTIONS[tab], all = data[tab], list = all;
   let h = `<div class="top"><h2>${S.label}</h2><div class="tools">`;
   if(canEdit()) h += `<button class="btn" id="add">Agregar ${tab==='plans'?'planificación':tab==='exams'?'evaluación':tab==='tasks'?'tarea':'material'}</button>`;
@@ -84,7 +100,14 @@ function render(){
     h += `</div></div><span class="chev">⌄</span></summary><div class="body">`;
     S.fields.forEach(([k,l,t]) => { if(t==='area' && d[k]) h += `<div class="f"><b>${l}</b><p>${esc(d[k])}</p></div>`; });
     const fl = (d.files||[]).filter(f => safeUrl(f.url));
-    if(fl.length || d.guideId) h += `<div class="files">${d.guideId ? `<button class="gdl" data-gd="${d.guideId}" data-gn="${esc(d.guideTitle||d.title||'guia')}">📄 Descargar guía (PDF)</button>` : ''}${fl.map(f=>`<a href="${esc(f.url)}" target="_blank" rel="noopener">📎 ${esc(f.name)}</a>`).join('')}</div>`;
+    const lf = Array.isArray(d.localFiles) ? d.localFiles : [];
+    if(fl.length || lf.length || d.guideId) {
+      h += `<div class="files">`;
+      if(d.guideId) h += `<button class="gdl" data-gd="${d.guideId}" data-gn="${esc(d.guideTitle||d.title||'guia')}">📄 Descargar guía (PDF)</button>`;
+      lf.forEach(f => { h += `<button type="button" class="gdl" data-lf="${esc(f.id)}" data-lfn="${esc(f.name)}">📄 ${esc(f.name)}</button>`; });
+      fl.forEach(f => { h += `<a href="${esc(f.url)}" target="_blank" rel="noopener">📎 ${esc(f.name)}</a>`; });
+      h += `</div>`;
+    }
     if(canEdit()) h += `<div class="acts">${d.ejercicios?`<button class="btn" data-g="${d.id}">Abrir examen</button>`:''}<button class="btn soft" data-e="${d.id}">Editar</button><button class="btn del" data-d="${d.id}">Borrar</button></div>`;
     h += `</div></details>`;
   });
@@ -92,18 +115,29 @@ function render(){
   $('#main').innerHTML = h;
   document.querySelectorAll('details').forEach(el => { if(open.includes(el.querySelector('h3').textContent)) el.open = true; });
   document.querySelectorAll('[data-gd]').forEach(b => b.onclick = async () => { b.disabled = true; const t = b.textContent; b.textContent = 'Descargando…'; try { await downloadGuide(b.dataset.gd, b.dataset.gn); } catch(e){ console.error(e); alert('No se pudo descargar la guía. Probá de nuevo.'); } b.disabled = false; b.textContent = t; });
+  document.querySelectorAll('[data-lf]').forEach(b => b.onclick = () => { if(window.AulaMateriales) AulaMateriales.openViewer(fs, b.dataset.lf, b.dataset.lfn); });
   if(canEdit()){
     $('#add').onclick = () => openForm();
     document.querySelectorAll('[data-g]').forEach(b => b.onclick = () => openSavedExam(all.find(x => x.id===b.dataset.g)));
     document.querySelectorAll('[data-e]').forEach(b => b.onclick = () => openForm(all.find(x => x.id===b.dataset.e)));
     document.querySelectorAll('[data-d]').forEach(b => b.onclick = async () => {
       if(!confirm('¿Querés borrar este elemento? No se puede deshacer.')) return;
-      try { await col(tab).doc(b.dataset.d).delete(); } catch(e){ alert('No se pudo borrar. Probá de nuevo.'); }
+      try {
+        const item = all.find(x => x.id===b.dataset.d);
+        if(item && Array.isArray(item.localFiles) && window.AulaMateriales){
+          for(const f of item.localFiles) await AulaMateriales.deleteLocalFile(fs, f.id);
+        }
+        await col(tab).doc(b.dataset.d).delete();
+      } catch(e){ alert('No se pudo borrar. Probá de nuevo.'); }
     });
   }
 }
 
 function openForm(d){
+  if(tab==='materials' && window.AulaMateriales){
+    AulaMateriales.openEditor({ db: fs, user, colRef: col('materials'), dlg: $('#dlg'), frm: $('#frm'), esc }, d);
+    return;
+  }
   const S = SECTIONS[tab]; d = d || {};
   const fld = ([k,l,t,opts]) => {
     let i;
@@ -171,7 +205,7 @@ function subscribe(){
   unsubs.forEach(u => u()); unsubs = [];
   data = {plans:[],exams:[],materials:[],tasks:[]};
   if(courseId){
-    visible().filter(k => k!=='gen' && k!=='lib' && k!=='guides' && k!=='tutor').forEach(k => {
+    visible().filter(k => !['gen','lib','guides','tutor','consultas'].includes(k)).forEach(k => {
       unsubs.push(col(k).orderBy('created','desc').onSnapshot(
         s => { data[k] = s.docs.map(x => ({id:x.id, ...x.data()})); render(); },
         err => { console.error(err); $('#role').textContent = 'No se pudieron cargar los datos'; }
@@ -194,7 +228,7 @@ function syncSel(){
   renderPicker();
   if(courseId !== subbed){
     subbed = courseId; saveSel();
-    G.escuela = spaceName(); G.curso = courseName(); G.sets = null;
+    if(typeof G !== 'undefined'){ G.escuela = spaceName(); G.curso = courseName(); G.sets = null; }
     subscribe();
   } else render();
 }
@@ -230,7 +264,7 @@ async function delCourse(){
   if(!confirm(`¿Borrar el curso “${courseName()}” con todo su material, tareas, planificaciones y evaluaciones? No se puede deshacer.`)) return;
   try {
     const ref = fs.collection('courses').doc(courseId);
-    for(const k of ['plans','exams','materials','tasks']){
+    for(const k of ['plans','exams','materials','tasks','consultas']){
       const sn = await ref.collection(k).get(); const b = fs.batch(); sn.docs.forEach(d => b.delete(d.ref)); if(sn.size) await b.commit();
     }
     await ref.delete(); courseId = '';
