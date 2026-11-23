@@ -17,27 +17,67 @@ function tutorContext(pregunta) {
     if (sc > 0) hits.push({ pg, sc });
   }
   hits.sort((a, b) => b.sc - a.sc);
-  const top = hits.slice(0, 6);
+  const top = hits.slice(0, 4);
 
   const texto = top.map(h =>
-    `--- LIBRO: "${h.pg.bt}" (Página ${h.pg.p}) ---\n${h.pg.t.slice(0, 3500)}`
+    `--- LIBRO: "${h.pg.bt}" (Página ${h.pg.p}) ---\n${h.pg.t.slice(0, 2200)}`
   ).join('\n\n');
 
   const fuentes = top.map(h => `${h.pg.bt} (pág. ${h.pg.p})`);
   return { texto, fuentes, libros };
 }
 
-// 2. Llama a la API gratuita de Gemini con respaldo automático ante alta demanda
+// 2. Llama a Gemini con STREAMING: el texto aparece a medida que se genera
+const TUTOR_MODELS_DEFAULT = ['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-3.5-flash-lite'];
+
+async function tutorStream(modelo, body, onText) {
+  const ctrl = new AbortController();
+  let timer = setTimeout(() => ctrl.abort(), 20000);          // si no responde en 20 s, pasa al siguiente modelo
+  try {
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelo}:streamGenerateContent?alt=sse`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': TUTOR.key },
+      body: JSON.stringify(body),
+      signal: ctrl.signal
+    });
+    if (!res.ok) {
+      let msg = ''; try { msg = (await res.json()).error?.message || ''; } catch (e) {}
+      const err = new Error(msg || ('Error ' + res.status)); err.status = res.status; throw err;
+    }
+    const rd = res.body.getReader(), dec = new TextDecoder();
+    let buf = '', full = '';
+    while (true) {
+      const { value, done } = await rd.read();
+      if (done) break;
+      clearTimeout(timer); timer = setTimeout(() => ctrl.abort(), 30000);
+      buf += dec.decode(value, { stream: true });
+      let i;
+      while ((i = buf.indexOf('\n')) >= 0) {
+        const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
+        if (!line.startsWith('data:')) continue;
+        try {
+          const j = JSON.parse(line.slice(5));
+          for (const p of (j.candidates?.[0]?.content?.parts || [])) if (p.text && !p.thought) { full += p.text; onText(full); }
+        } catch (e) {}
+      }
+    }
+    return full;
+  } finally { clearTimeout(timer); }
+}
+
 async function tutorAsk(pregunta) {
   if (!TUTOR.key) {
     alert('Primero pegá tu API Key gratuita de Google AI Studio.');
     return;
   }
-  if (!LIB.loaded) await libEnsure();
+  if (!LIB.loaded) {                                           // esperar a que termine de abrirse la biblioteca
+    await libEnsure();
+    const t0 = Date.now();
+    while (LIB.loading && Date.now() - t0 < 15000) await new Promise(r => setTimeout(r, 200));
+  }
 
   TUTOR.history.push({ role: 'user', text: pregunta });
   TUTOR.busy = true;
-  renderTutor();
 
   const ctx = tutorContext(pregunta);
   const listaLibros = ctx.libros.length
@@ -49,50 +89,52 @@ REGLAS ESTRICTAS:
 1. Si el usuario pregunta sobre cualquier tema ajeno a la matemática (historia, lengua, cocina, programación general, etc.), rechaza amablemente la consulta diciendo: "Solo estoy habilitado para ayudarte con temas de Matemática y el material cargado en la biblioteca."
 2. Prioriza y utiliza los fragmentos de los libros cargados que se te entregan en el contexto. Cuando uses información de ellos, cita explícitamente el nombre del libro y el número de página.
 3. Si la respuesta no está en los fragmentos entregados, aclara: "No encontré este tema específico en los libros cargados, pero desde la teoría matemática se resuelve así:" y luego explica el procedimiento.
-4. Escribe todas las expresiones matemáticas y fórmulas usando LaTeX ($...$ para fórmulas en línea y $$...$$ para bloques centrados). Explica paso a paso con claridad pedagógica.`;
+4. Escribe todas las expresiones matemáticas y fórmulas usando LaTeX ($...$ para fórmulas en línea y $$...$$ para bloques centrados). Explica paso a paso con claridad pedagógica, pero sin rodeos.`;
 
   const promptFinal = ctx.texto
     ? `${listaLibros}FRAGMENTOS ENCONTRADOS EN LA BIBLIOTECA:\n${ctx.texto}\n\nPREGUNTA DEL USUARIO:\n${pregunta}`
     : `${listaLibros}AVISO: No se encontraron coincidencias directas en los PDF cargados.\n\nPREGUNTA DEL USUARIO:\n${pregunta}`;
 
-  // Lista de modelos gratuitos en orden de prioridad (si uno está saturado, pasa al siguiente)
-  const modelos = ['gemini-3.8-flash', 'gemini-3.8-flash-lite', 'gemini-3.5-flash'];
-  let respuesta = '';
+  // Mensaje "en vivo" que se va completando mientras llega la respuesta
+  const live = { role: 'ai', text: '', fuentes: ctx.fuentes, live: true };
+  TUTOR.history.push(live);
+  renderTutor();
+  const onText = t => {
+    live.text = t;
+    const el = document.getElementById('tu-live');
+    if (el) { el.textContent = t; const c = document.getElementById('tu-chat'); if (c) c.scrollTop = c.scrollHeight; }
+  };
+
+  const modelos = window.TUTOR_MODELS || TUTOR_MODELS_DEFAULT;   // se pueden cambiar en config.js
   let ultimoError = '';
 
   for (const modelo of modelos) {
-    try {
-      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent?key=${encodeURIComponent(TUTOR.key)}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          system_instruction: { parts: [{ text: systemPrompt }] },
-          contents: [{ role: 'user', parts: [{ text: promptFinal }] }],
-          generationConfig: { temperature: 0.2 }
-        })
-      });
-
-      const json = await res.json();
-      if (!res.ok) {
-        ultimoError = json.error?.message || `Error ${res.status}`;
-        // Si hay alta demanda (503) o límite temporal (429), prueba el siguiente modelo
-        if (res.status === 503 || res.status === 429 || /high demand/i.test(ultimoError)) continue;
-        throw new Error(ultimoError);
+    for (const conThinking of [true, false]) {
+      const body = {
+        system_instruction: { parts: [{ text: systemPrompt }] },
+        contents: [{ role: 'user', parts: [{ text: promptFinal }] }],
+        generationConfig: Object.assign({ temperature: 0.2, maxOutputTokens: 4096 }, conThinking ? { thinkingConfig: { thinkingLevel: 'low' } } : {})
+      };
+      try {
+        const txt = await tutorStream(modelo, body, onText);
+        if (txt) { live.text = txt; break; }
+        ultimoError = 'Respuesta vacía';
+        break;
+      } catch (e) {
+        ultimoError = e.name === 'AbortError' ? 'El modelo tardó demasiado en responder' : (e.message || 'Error');
+        if (live.text) break;                                   // ya llegó algo: se conserva
+        // si el modelo no acepta la opción de "pensar poco", reintenta el mismo sin ella
+        if (conThinking && e.status === 400 && /think/i.test(ultimoError)) continue;
+        if (e.status === 401 || e.status === 403) { modelos.length = 0; }   // clave inválida: no sigue probando
+        break;
       }
-
-      respuesta = json.candidates?.[0]?.content?.parts?.[0]?.text || 'No pude generar una respuesta.';
-      break;
-    } catch (e) {
-      ultimoError = e.message;
     }
+    if (live.text) break;
   }
 
-  if (respuesta) {
-    TUTOR.history.push({ role: 'ai', text: respuesta, fuentes: ctx.fuentes });
-  } else {
-    TUTOR.history.push({ role: 'ai', text: '⚠️ Error al conectar con la IA: ' + ultimoError, fuentes: [] });
-  }
-
+  delete live.live;
+  if (!live.text) live.text = '⚠️ Error al conectar con la IA: ' + ultimoError;
+  else if (ultimoError && /demasiado|abort/i.test(ultimoError)) live.text += '\n\n(La respuesta se cortó antes de terminar.)';
   TUTOR.busy = false;
   renderTutor();
 }
@@ -117,11 +159,10 @@ function renderTutor() {
       ${TUTOR.history.length ? TUTOR.history.map(msg => `
         <div style="padding:12px 14px;border-radius:12px;background:${msg.role === 'user' ? 'var(--plans-bg)' : 'var(--sf2)'};border:1px solid var(--bd)">
           <b>${msg.role === 'user' ? 'Vos:' : '🤖 Tutor Matemático:'}</b>
-          <div class="tu-msg" style="margin-top:4px;white-space:pre-wrap">${esc(msg.text)}</div>
+          <div class="tu-msg" ${msg.live ? 'id="tu-live"' : ''} style="margin-top:4px;white-space:pre-wrap">${esc(msg.text || (msg.live ? '⏳ Pensando…' : ''))}</div>
           ${msg.fuentes?.length ? `<div class="note" style="margin-top:8px">📚 <b>Páginas consultadas:</b> ${esc(msg.fuentes.join(' · '))}</div>` : ''}
         </div>
       `).join('') : '<p class="note">Escribí una duda abajo. Por ejemplo: <i>"Explicame cómo resolver ecuaciones cuadráticas según mis libros"</i> o <i>"Armame 3 ejercicios similares a los de la página 14 de Pitágoras"</i>.</p>'}
-      ${TUTOR.busy ? '<p class="note">⏳ Analizando tus libros y resolviendo…</p>' : ''}
     </div>
     <div class="row" style="grid-template-columns:1fr auto;align-items:end">
       <textarea id="tu-in" rows="2" placeholder="Escribí tu consulta matemática acá…"></textarea>
@@ -129,7 +170,8 @@ function renderTutor() {
     </div>
   `;
 
-  if (window.renderMathInElement) {
+  { const c = document.getElementById('tu-chat'); if (c) c.scrollTop = c.scrollHeight; }
+  if (window.renderMathInElement && !TUTOR.busy) {
     renderMathInElement(document.getElementById('tu-chat'), {
       delimiters: [
         { left: '$$', right: '$$', display: true },
