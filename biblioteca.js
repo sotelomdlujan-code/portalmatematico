@@ -414,6 +414,13 @@ function lbSnip(text, stems, max = 3){
 }
 
 /* ---------- pantalla ---------- */
+function lbDdLabel(){
+  const n = LIB.books.length, k = LIB.books.filter(b => LIB.inc.has(b.id)).length;
+  if(k === n) return 'Todos los libros (' + n + ')';
+  if(k === 0) return 'Ningún libro seleccionado';
+  if(k === 1) return esc(LIB.books.find(b => LIB.inc.has(b.id)).title);
+  return k + ' de ' + n + ' libros';
+}
 const lbHead = () => `<div class="top"><h2>Biblioteca</h2><div class="tools">${lbRO() ? '' : '<button class="btn" id="lb-add">Agregar PDF</button><input type="file" id="lb-file" accept="application/pdf,.pdf" multiple hidden>'}</div></div><p class="lead">${lbRO() ? 'Buscá por tema y descargá los PDF que necesites.' : 'Cargá tus PDF y libros y buscá por tema. Podés armar guías con las páginas que elijas.'}</p>`;
 function renderLib(){
   const m = document.getElementById('main');
@@ -427,17 +434,20 @@ function renderLib(){
   m.innerHTML = lbHead() + `<div id="lb-prog"></div>${LIB.note ? `<div class="lb-note">${esc(LIB.note).replace(/\n/g, '<br>')}</div>` : ''}
   <div class="gd-box lib-ui"><div class="lb-row"><div class="lb-f"><label for="lb-topic">Tema</label><select id="lb-topic"><option value="">— Elegí un tema —</option>${topics.map(t => `<option value="${t.k}" ${LIB.q.topic === t.k ? 'selected' : ''}>${esc(t.n)}</option>`).join('')}</select></div>
     <div class="lb-f"><label for="lb-q">o escribí lo que buscás</label><input id="lb-q" value="${esc(LIB.q.text)}" placeholder='Ej.: teorema de Pitágoras' autocomplete="off"></div></div>
+    ${LIB.books.length > 1 ? `<div class="lb-f lb-ddwrap"><label>Buscar en</label><details class="lb-dd" id="lb-dd"><summary id="lb-dd-s">${lbDdLabel()}</summary>
+      <div class="lb-dd-p"><input type="search" id="lb-dd-f" class="lb-dd-f" placeholder="Filtrar libros…" autocomplete="off">
+        <div class="lb-dd-a"><button type="button" class="btn soft" id="lb-dd-all">Todos</button><button type="button" class="btn soft" id="lb-dd-none">Ninguno</button></div>
+        <div class="lb-dd-l" id="lb-dd-l">${LIB.books.map(b => `<label class="lb-dd-i" data-t="${esc(lbNrm(b.title))}"><input type="checkbox" class="lb-bk" value="${b.id}" ${LIB.inc.has(b.id) ? 'checked' : ''}><span>${esc(b.title)}</span></label>`).join('')}</div></div></details></div>` : ''}
     <details class="lb-more"><summary>Más opciones de búsqueda</summary>
       <div class="lb-row lb-opts"><label class="chk"><input type="radio" name="lb-mode" value="all" ${LIB.q.mode === 'all' ? 'checked' : ''}> Que aparezcan todas las palabras</label><label class="chk"><input type="radio" name="lb-mode" value="any" ${LIB.q.mode === 'any' ? 'checked' : ''}> Alguna de las palabras</label></div>
       <p class="note">Usá “comillas” para buscar una frase exacta.</p>
-      ${LIB.books.length > 1 ? `<div class="lb-books"><span>Buscar en:</span>${LIB.books.map(b => `<label class="chipsel"><input type="checkbox" class="lb-bk" value="${b.id}" ${LIB.inc.has(b.id) ? 'checked' : ''}><span>${esc(b.title)}</span></label>`).join('')}</div>` : ''}
     </details>
     <div class="acts"><button class="btn" id="lb-go" ${LIB.books.length ? '' : 'disabled'}>🔍 Buscar</button></div>
   </div>
   <div id="lb-out" class="lib-ui"></div>
-  <h3 class="lb-h lib-ui">Documentos (${LIB.books.length})</h3>
+  <details class="lb-docsbox lib-ui"><summary class="lb-h">Documentos (${LIB.books.length})</summary>
   ${!RO && LIB.books.some(b => !b.hasPdf) ? `<div class="lb-note lib-ui"><b>${LIB.books.filter(b => !b.hasPdf).length} documento(s) no tienen el PDF original en la nube</b>, por eso solo se ven desde el navegador donde los cargaste. Tocá “☁️ Subir PDF” en cada uno (si no está en este navegador te pide elegir el archivo), o <button class="btn soft" id="lb-upall">Subir todos los que pueda</button></div>` : ''}
-  <div class="lb-docs lib-ui">${LIB.books.length ? LIB.books.map(b => `<div class="lb-doc"><div><b>${esc(b.title)}</b><div class="lb-meta">${b.npages || (b.pages || []).length} páginas${b.ocr ? ' · OCR' : ''}${b.hasPdf ? '' : ' · PDF sin subir a la nube'}</div></div><div><button class="btn soft" data-open="${b.id}">Ver</button> ${b.hasPdf ? `<button class="btn soft" data-dl="${b.id}">⬇ Descargar</button>` : (RO ? '' : `<button class="btn" data-up="${b.id}">☁️ Subir PDF</button>`)}${RO ? '' : ` <button class="ib" data-ren="${b.id}" title="Cambiar nombre">✏️</button> <button class="ib" data-del="${b.id}" title="Borrar">🗑</button>`}</div></div>`).join('') : `<div class="empty"><div class="big">${RO ? 'Todavía no hay documentos' : 'Todavía no cargaste documentos'}</div>${RO ? '' : 'Tocá “Agregar PDF” para subir tus libros, guías y apuntes.'}</div>`}</div>
+  <div class="lb-docs lib-ui">${LIB.books.length ? LIB.books.map(b => `<div class="lb-doc"><div><b>${esc(b.title)}</b><div class="lb-meta">${b.npages || (b.pages || []).length} páginas${b.ocr ? ' · OCR' : ''}${b.hasPdf ? '' : ' · PDF sin subir a la nube'}</div></div><div><button class="btn soft" data-open="${b.id}">Ver</button> ${b.hasPdf ? `<button class="btn soft" data-dl="${b.id}">⬇ Descargar</button>` : (RO ? '' : `<button class="btn" data-up="${b.id}">☁️ Subir PDF</button>`)}${RO ? '' : ` <button class="ib" data-ren="${b.id}" title="Cambiar nombre">✏️</button> <button class="ib" data-del="${b.id}" title="Borrar">🗑</button>`}</div></div>`).join('') : `<div class="empty"><div class="big">${RO ? 'Todavía no hay documentos' : 'Todavía no cargaste documentos'}</div>${RO ? '' : 'Tocá “Agregar PDF” para subir tus libros, guías y apuntes.'}</div>`}</div></details>
   ${RO ? '' : '<details class="gd-box lib-ui" id="lb-sharebox"><summary><b>👥 Compartir la biblioteca (solo lectura)</b></summary><div id="lb-share"><p class="note">Cargando…</p></div></details>'}
   <div class="sheet sheet-lib" id="lb-print"></div>`;
   if(!RO){
@@ -459,7 +469,15 @@ function renderLib(){
   document.getElementById('lb-go').onclick = go;
   document.getElementById('lb-q').onkeydown = e => { if(e.key === 'Enter') go(); };
   document.getElementById('lb-topic').onchange = () => { if(document.getElementById('lb-topic').value) document.getElementById('lb-q').value = ''; };
-  document.querySelectorAll('.lb-bk').forEach(c => c.onchange = () => { c.checked ? LIB.inc.add(c.value) : LIB.inc.delete(c.value); });
+  const ddUp = () => { const s = document.getElementById('lb-dd-s'); if(s) s.textContent = lbDdLabel(); };
+  document.querySelectorAll('.lb-bk').forEach(c => c.onchange = () => { c.checked ? LIB.inc.add(c.value) : LIB.inc.delete(c.value); ddUp(); });
+  const ddAll = document.getElementById('lb-dd-all'), ddNone = document.getElementById('lb-dd-none'), ddF = document.getElementById('lb-dd-f');
+  const ddSet = on => document.querySelectorAll('#lb-dd-l .lb-dd-i').forEach(l => { if(l.hidden) return; const c = l.querySelector('input'); c.checked = on; on ? LIB.inc.add(c.value) : LIB.inc.delete(c.value); });
+  if(ddAll) ddAll.onclick = () => { ddSet(true); ddUp(); };
+  if(ddNone) ddNone.onclick = () => { ddSet(false); ddUp(); };
+  if(ddF) ddF.oninput = () => { const q = lbNrm(ddF.value.trim()); document.querySelectorAll('#lb-dd-l .lb-dd-i').forEach(l => l.hidden = q && !l.dataset.t.includes(q)); };
+  const dd = document.getElementById('lb-dd');
+  if(dd) document.addEventListener('click', function cl(e){ if(!document.body.contains(dd)){ document.removeEventListener('click', cl); return; } if(!dd.contains(e.target)) dd.open = false; });
   document.querySelectorAll('[data-open]').forEach(b => b.onclick = () => lbViewer(b.dataset.open, 1));
   document.querySelectorAll('[data-dl]').forEach(b => b.onclick = () => lbDownload(b.dataset.dl, b));
   if(LIB.busy) lbProg(LIB.busy.msg, LIB.busy.pct);
