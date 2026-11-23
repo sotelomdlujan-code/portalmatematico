@@ -1,5 +1,5 @@
 /* Tutor IA: responde únicamente sobre matemática y consulta los PDF cargados en la Biblioteca. */
-const TUTOR = { history: [], key: localStorage.getItem('gemini_key') || '', busy: false, imgs: [] };
+const TUTOR = { history: [], key: localStorage.getItem('gemini_key') || '', busy: false, imgs: [], vision: localStorage.getItem('tutor_vision') === '1', docs: {} };
 
 // 1. Busca las páginas más relevantes en los libros ya cargados (LIB.pages)
 function tutorContext(pregunta) {
@@ -24,7 +24,8 @@ function tutorContext(pregunta) {
   ).join('\n\n');
 
   const fuentes = top.map(h => `${h.pg.bt} (pág. ${h.pg.p})`);
-  return { texto, fuentes, libros };
+  const paginas = top.map(h => ({ b: h.pg.b, bt: h.pg.bt, p: h.pg.p }));
+  return { texto, fuentes, libros, paginas };
 }
 
 // 2. Llama a Gemini con STREAMING: el texto aparece a medida que se genera
@@ -91,7 +92,8 @@ REGLAS ESTRICTAS:
 3. Si la respuesta no está en los fragmentos entregados, aclara: "No encontré este tema específico en los libros cargados, pero desde la teoría matemática se resuelve así:" y luego explica el procedimiento.
 4. Escribe todas las expresiones matemáticas y fórmulas usando LaTeX ($...$ para fórmulas en línea y $$...$$ para bloques centrados). Explica paso a paso con claridad pedagógica, pero sin rodeos.
 5. Si el usuario adjunta una imagen: si contiene un ejercicio, problema, gráfico, figura o resolución de matemática, primero transcribí brevemente lo que ves y después resolvelo o analizalo paso a paso (si es una resolución del alumno, señalá con claridad dónde hay errores). Si la imagen no tiene nada que ver con matemática, aplicá la regla 1. Si algo no se lee bien, decilo en vez de inventarlo.
-6. FIGURAS: cuando haya que dibujar (o el usuario lo pida), hacé la figura como un único bloque \`\`\`svg con un <svg> completo y válido: viewBox="0 0 480 360", primero un <rect> blanco de fondo, estilo en blanco y negro apto para imprimir (trazo negro, grises claros como relleno, sin colores fuertes), todos los estilos como atributos (nada de <style>, clases ni imágenes externas), texto en <text> plano con font-size 15 o 16 (sin LaTeX; usá símbolos como ², √, ° y letras como x). Dibujá a escala aproximada coherente con los datos, marcá el ángulo recto con un cuadradito, rotulá los lados con sus medidas y las unidades, y la incógnita como x (o con "?"). La figura del enunciado NO muestra el resultado. Tené cuidado de que ningún texto se salga del cuadro ni se superponga.`;
+6. FIGURAS: cuando haya que dibujar (o el usuario lo pida), hacé la figura como un único bloque \`\`\`svg con un <svg> completo y válido: viewBox="0 0 480 360", primero un <rect> blanco de fondo, estilo en blanco y negro apto para imprimir (trazo negro, grises claros como relleno, sin colores fuertes), todos los estilos como atributos (nada de <style>, clases ni imágenes externas), texto en <text> plano con font-size 15 o 16 (sin LaTeX; usá símbolos como ², √, ° y letras como x). Dibujá a escala aproximada coherente con los datos, marcá el ángulo recto con un cuadradito, rotulá los lados con sus medidas y las unidades, y la incógnita como x (o con "?"). La figura del enunciado NO muestra el resultado. Tené cuidado de que ningún texto se salga del cuadro ni se superponga.
+7. PÁGINAS DE LOS LIBROS: si junto a la consulta llegan imágenes rotuladas como "Imagen de la página X del libro Y", son páginas reales de los libros cargados: leé de ahí las figuras, gráficos, tablas y fórmulas (el texto extraído puede estar incompleto), y citá libro y página. Si algo de la página no se ve bien, decilo en vez de inventarlo.`;
 
   const pq = pregunta || 'Analizá la imagen adjunta.';
   const nImg = imgs.length ? `AVISO: el usuario adjuntó ${imgs.length} imagen(es).\n\n` : '';
@@ -112,6 +114,14 @@ TAREA: esto es un problema para resolver con el Teorema de Pitágoras (si el usu
     if (el) { const sp = tutorSplit(t); el.textContent = (sp.svg || sp.dibujando) ? (sp.antes + (sp.despues ? '\n\n' + sp.despues : '') + '\n\n🎨 Dibujando la figura…').trim() : t; const c = document.getElementById('tu-chat'); if (c) c.scrollTop = c.scrollHeight; }
   };
 
+  const pageParts = [];
+  if (TUTOR.vision && !opts.draw && ctx.paginas && ctx.paginas.length) {
+    const el = document.getElementById('tu-live'); if (el) el.textContent = '📖 Mirando las páginas de tus libros…';
+    const vistas = await tutorPageImgs(ctx.paginas);
+    vistas.forEach(v => pageParts.push({ text: `[Imagen de la página ${v.p} del libro "${v.bt}"]` }, { inline_data: { mime_type: v.mime, data: v.b64 } }));
+    live.vistas = vistas.map(v => `${v.bt} (pág. ${v.p})`);
+    if (el) el.textContent = '⏳ Pensando…';
+  }
   const modelos = window.TUTOR_MODELS || TUTOR_MODELS_DEFAULT;   // se pueden cambiar en config.js
   let ultimoError = '';
 
@@ -119,7 +129,7 @@ TAREA: esto es un problema para resolver con el Teorema de Pitágoras (si el usu
     for (const conThinking of [true, false]) {
       const body = {
         system_instruction: { parts: [{ text: systemPrompt }] },
-        contents: [{ role: 'user', parts: [...imgs.map(i => ({ inline_data: { mime_type: i.mime, data: i.b64 } })), { text: promptFinal + extra }] }],
+        contents: [{ role: 'user', parts: [...pageParts, ...imgs.map(i => ({ inline_data: { mime_type: i.mime, data: i.b64 } })), { text: promptFinal + extra }] }],
         generationConfig: Object.assign({ temperature: 0.2, maxOutputTokens: opts.draw ? 8192 : 4096 }, conThinking ? { thinkingConfig: { thinkingLevel: 'low' } } : {})
       };
       try {
@@ -144,6 +154,31 @@ TAREA: esto es un problema para resolver con el Teorema de Pitágoras (si el usu
   else if (ultimoError && /demasiado|abort/i.test(ultimoError)) live.text += '\n\n(La respuesta se cortó antes de terminar.)';
   TUTOR.busy = false;
   renderTutor();
+}
+
+// Visión: convierte las páginas más relevantes de los libros en imágenes para que la IA vea figuras, gráficos y fórmulas
+async function tutorPageImgs(paginas, max = 3) {
+  const out = [];
+  let pdfjs; try { pdfjs = await lbPdf(); } catch (e) { return out; }
+  for (const pg of paginas) {
+    if (out.length >= max) break;                                       // con 3 páginas alcanza; si alguna no tiene PDF, sigue con la próxima
+    try {
+      let doc = TUTOR.docs[pg.b];
+      if (!doc) {
+        const blob = await lbGetPdf(pg.b); if (!blob) continue;            // sin PDF original guardado: solo texto
+        const keys = Object.keys(TUTOR.docs);
+        if (keys.length >= 4) { try { TUTOR.docs[keys[0]].destroy(); } catch (e) {} delete TUTOR.docs[keys[0]]; }   // no acumular memoria
+        doc = TUTOR.docs[pg.b] = await pdfjs.getDocument({ data: new Uint8Array(await blob.arrayBuffer()) }).promise;
+      }
+      const page = await doc.getPage(pg.p), v1 = page.getViewport({ scale: 1 }), vp = page.getViewport({ scale: 1100 / v1.width });
+      const cv = document.createElement('canvas'); cv.width = Math.round(vp.width); cv.height = Math.round(vp.height);
+      const cx = cv.getContext('2d'); cx.fillStyle = '#fff'; cx.fillRect(0, 0, cv.width, cv.height);
+      await page.render({ canvasContext: cx, canvas: cv, viewport: vp }).promise;
+      out.push({ ...pg, mime: 'image/jpeg', b64: cv.toDataURL('image/jpeg', 0.8).split(',')[1] });
+      if (page.cleanup) page.cleanup();
+    } catch (e) { console.warn('No se pudo mostrar la página', pg, e); }
+  }
+  return out;
 }
 
 // Figuras: la IA escribe la figura como SVG; se limpia y se muestra (se puede bajar como PNG o SVG)
@@ -252,13 +287,14 @@ function renderTutor() {
           <button class="btn" id="tu-save">Guardar clave</button>
         </div>
       </details>` : ''}
+    <label class="chk"><input type="checkbox" id="tu-vis" ${TUTOR.vision ? 'checked' : ''}> 👁 Que mire las páginas de mis libros como imagen (ve figuras, gráficos y fórmulas; tarda un poco más)</label>
     <div class="gd-box" id="tu-chat" style="min-height:260px;max-height:520px;overflow-y:auto;display:flex;flex-direction:column;gap:12px">
       ${TUTOR.history.length ? TUTOR.history.map((msg, idx) => `
         <div style="padding:12px 14px;border-radius:12px;background:${msg.role === 'user' ? 'var(--plans-bg)' : 'var(--sf2)'};border:1px solid var(--bd)">
           <b>${msg.role === 'user' ? 'Vos:' : '🤖 Tutor Matemático:'}</b>
           ${msg.imgs?.length ? '<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">' + msg.imgs.map(u => '<img src="' + u + '" style="max-height:140px;max-width:100%;border-radius:8px;border:1px solid var(--bd)">').join('') + '</div>' : ''}
           ${msg.live ? `<div class="tu-msg" id="tu-live" style="margin-top:4px;white-space:pre-wrap">${esc(msg.text || '⏳ Pensando…')}</div>` : tutorBodyHtml(msg, idx)}
-          ${msg.fuentes?.length ? `<div class="note" style="margin-top:8px">📚 <b>Páginas consultadas:</b> ${esc(msg.fuentes.join(' · '))}</div>` : ''}
+          ${msg.fuentes?.length ? `<div class="note" style="margin-top:8px">📚 <b>Páginas consultadas:</b> ${esc(msg.fuentes.join(' · '))}${msg.vistas?.length ? '<br>👁 <b>Vistas como imagen:</b> ' + esc(msg.vistas.join(' · ')) : ''}</div>` : ''}
         </div>
       `).join('') : '<p class="note">Escribí una duda abajo. Por ejemplo: <i>"Explicame cómo resolver ecuaciones cuadráticas según mis libros"</i> o <i>"Armame 3 ejercicios similares a los de la página 14 de Pitágoras"</i>. Con <b>📐 Resolver y dibujar</b> pegás un problema (o pedís que invente uno) y te arma la figura.</p>'}
     </div>
@@ -298,6 +334,7 @@ function renderTutor() {
     tutorAsk(val, imgs, { draw: draw === true });
   };
   tutorShowPrev();
+  $('#tu-vis').onchange = e => { TUTOR.vision = e.target.checked; localStorage.setItem('tutor_vision', TUTOR.vision ? '1' : '0'); };
   $('#tu-att').onclick = () => $('#tu-file').click();
   $('#tu-file').onchange = async e => { await tutorAddImgs(e.target.files); e.target.value = ''; };
   $('#tu-in').addEventListener('paste', e => {                 // pegar una captura con Ctrl+V
