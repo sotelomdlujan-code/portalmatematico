@@ -273,16 +273,47 @@ async function lbAddFile(file){
   return {title, n, chars, ocr, cloud, big:file.size > LB_MAXPDF};
 }
 const lbMB = f => (f.size / 1048576).toFixed(1).replace('.', ',') + ' MB';
+/* ---------- dividir PDF grandes en partes de ~17 MB ---------- */
+const LB_PARTSZ = 17 * 1048576;
+const lbTick = () => new Promise(r => setTimeout(r, 0));
+async function lbPdfLib(){
+  if(window.PDFLib) return window.PDFLib;
+  try { await lbScript('https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js'); } catch(e){ throw new Error('No se pudo cargar la herramienta para dividir PDF. Revisá tu conexión a internet.'); }
+  return window.PDFLib;
+}
+async function lbSplitPdf(file){
+  const base = file.name.replace(/\.pdf$/i, '');
+  lbProg('Abriendo “' + base + '” para dividirlo…', 0); await lbTick();
+  const P = await lbPdfLib();
+  const src = await P.PDFDocument.load(await file.arrayBuffer(), {ignoreEncryption:true, updateMetadata:false});
+  const N = src.getPageCount(), parts = [];
+  let start = 0, ppp = Math.max(1, Math.floor(N * LB_PARTSZ / file.size * 0.8));
+  while(start < N){
+    if(LIB.cancel) throw new Error('cancel');
+    const end = Math.min(N, start + ppp), cnt = end - start;
+    lbProg('Dividiendo “' + base + '” — páginas ' + (start + 1) + ' a ' + end + ' de ' + N, start / N); await lbTick();
+    const doc = await P.PDFDocument.create();
+    (await doc.copyPages(src, Array.from({length:cnt}, (_, i) => start + i))).forEach(pg => doc.addPage(pg));
+    const bytes = await doc.save({useObjectStreams:true});
+    if(bytes.length > LB_MAXPDF && cnt > 1){          // se pasó de 20 MB: reintenta con menos páginas
+      ppp = Math.max(1, Math.min(cnt - 1, Math.floor(cnt * LB_PARTSZ / bytes.length))); continue;
+    }
+    parts.push(new File([bytes], base + ' (págs. ' + (start + 1) + '-' + end + ').pdf', {type:'application/pdf'}));
+    start = end; ppp = Math.max(1, Math.floor(cnt * LB_PARTSZ / bytes.length));
+  }
+  return parts;
+}
+
 function lbAskBig(files){
   const small = files.filter(f => f.size <= LB_MAXPDF), big = files.filter(f => f.size > LB_MAXPDF);
   return new Promise(res => {
-    const li = arr => arr.map(f => `<div class="share-row"><span>${esc(f.name)}</span><b>${lbMB(f)}</b></div>`).join('');
-    $('#frm').innerHTML = `<h3>Separé tus archivos por tamaño</h3>
-      <p class="note">El límite para guardar el PDF original en la nube es de 20 MB.</p>
-      <h4 style="margin:12px 0 2px">✅ Entran (${small.length})</h4>${small.length ? li(small) : '<p class="note">Ninguno.</p>'}
-      <h4 style="margin:12px 0 2px">⚠️ Pesan más de 20 MB (${big.length})</h4>${li(big)}
-      <p class="note">Los grandes se pueden cargar igual, pero solo se guarda el texto (se pueden buscar, pero no ver ni descargar el PDF). Para tenerlos completos, dividilos o comprimilos y cargalos de nuevo.</p>
-      <div class="acts" style="margin-top:16px;flex-wrap:wrap">${small.length ? `<button class="btn" data-c="fit">Cargar solo los que entran (${small.length})</button>` : ''}<button class="btn soft" data-c="all">Cargar todos (los grandes solo texto)</button><button class="btn soft" data-c="no">Cancelar</button></div>`;
+    const li = arr => arr.map(f => `<div class="share-row"><span>${esc(f.name)}</span><b>${lbMB(f)}${f.size > LB_MAXPDF ? ' → ~' + Math.ceil(f.size / LB_PARTSZ) + ' partes' : ''}</b></div>`).join('');
+    $('#frm').innerHTML = `<h3>Archivos de más de 20 MB</h3>
+      <p class="note">El límite para guardar un PDF en la nube es de 20 MB, así que los grandes se <b>dividen solos</b> en partes por páginas. Cada parte queda como un libro más (por ejemplo “Libro (págs. 1-120)”), y la búsqueda, el visor y las guías funcionan igual.</p>
+      <h4 style="margin:12px 0 2px">⚠️ Se van a dividir (${big.length})</h4>${li(big)}
+      ${small.length ? `<h4 style="margin:12px 0 2px">✅ Se cargan tal cual (${small.length})</h4>${li(small)}` : ''}
+      <p class="note">Dividir un PDF muy grande usa bastante memoria: conviene hacerlo desde una computadora y sin otras pestañas pesadas abiertas.</p>
+      <div class="acts" style="margin-top:16px;flex-wrap:wrap"><button class="btn" data-c="split">Dividir y cargar</button>${small.length ? `<button class="btn soft" data-c="fit">Cargar solo los chicos (${small.length})</button>` : ''}<button class="btn soft" data-c="all">Sin dividir (los grandes solo texto)</button><button class="btn soft" data-c="no">Cancelar</button></div>`;
     const d = $('#dlg'); let out = 'no';
     d.addEventListener('close', () => res(out), {once:true});
     $('#frm').querySelectorAll('[data-c]').forEach(b => b.onclick = () => { out = b.dataset.c; d.close(); });
@@ -290,13 +321,25 @@ function lbAskBig(files){
   });
 }
 async function lbAddFiles(files){
+  const ok = [], bad = [];
+  LIB.cancel = false;
   if(files.some(f => f.size > LB_MAXPDF)){
     const c = await lbAskBig(files);
     if(c === 'no') return;
     if(c === 'fit') files = files.filter(f => f.size <= LB_MAXPDF);
+    if(c === 'split'){
+      const out = [];
+      for(const f of files){
+        if(f.size <= LB_MAXPDF){ out.push(f); continue; }
+        try { out.push(...await lbSplitPdf(f)); }
+        catch(e){
+          if(e.message === 'cancel'){ lbProgEnd(); LIB.note = 'Cancelado: no se cargó nada de “' + f.name + '”.'; renderLib(); return; }
+          console.error(e); bad.push('“' + f.name + '”: no se pudo dividir (' + (e.message || 'error') + '). Probá comprimirlo en ilovepdf.com o cargarlo sin dividir.');
+        }
+      }
+      files = out;
+    }
   }
-  const ok = [], bad = [];
-  LIB.cancel = false;
   for(const f of files){
     try { ok.push(await lbAddFile(f)); }
     catch(e){
