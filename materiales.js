@@ -1,6 +1,6 @@
-/* materiales.js — Carga directa de PDFs e imágenes por Escuela/Curso sin enlaces externos */
+/* materiales.js — Carga directa de PDFs e imágenes en courses/{courseId}/materials */
 (function(){
-  const CHUNK_SIZE = 700000; // ~700 KB por bloque en Firestore (evita límite de 1 MB por doc)
+  const CHUNK_SIZE = 700000;
 
   function readAsDataURL(file){
     return new Promise((res, rej) => {
@@ -71,35 +71,26 @@
 
   window.AulaMateriales = {
     openEditor(ctx, existingItem){
-      const { db, user, scope, dlg, frm, esc, onSaved } = ctx;
+      const { db, user, colRef, dlg, frm, esc } = ctx;
       const it = existingItem || {};
       const keptFiles = Array.isArray(it.localFiles) ? [...it.localFiles] : [];
+      const removedIds = [];
 
       frm.innerHTML = `
-        <h3>${it.id ? "Editar material" : "Nuevo material para el curso"}</h3>
-        <label>Título del material *</label>
+        <h3>${it.id ? "Editar" : "Nuevo"} · material</h3>
+        <label>Título *</label>
         <input id="m-tit" required placeholder="Ej: Apunte de Ecuaciones + Guía práctica" value="${esc(it.title || "")}">
-        <div class="row">
-          <div>
-            <label>Tema / Unidad</label>
-            <input id="m-top" placeholder="Ej: Números Racionales" value="${esc(it.topic || "")}">
-          </div>
-          <div>
-            <label>Fecha</label>
-            <input id="m-dt" type="date" value="${esc(it.date || new Date().toISOString().slice(0,10))}">
-          </div>
-        </div>
-        <label>Descripción o indicaciones para los alumnos</label>
-        <textarea id="m-desc" placeholder="Explicá qué contiene el archivo o qué páginas tienen que leer...">${esc(it.description || "")}</textarea>
+        <label>Descripción</label>
+        <textarea id="m-desc" placeholder="Explicá qué contiene el archivo o qué páginas tienen que leer...">${esc(it.descripcion || "")}</textarea>
 
-        <label>Adjuntar archivos PDF o imágenes desde tu dispositivo</label>
+        <label>Subir PDF o imágenes desde tu dispositivo</label>
         <input id="m-files" type="file" accept=".pdf,application/pdf,image/*" multiple>
-        <p class="note">Se guardan directamente en el aula (sin usar Google Drive). Máximo recomendado: 12 MB por archivo.</p>
+        <p class="note">Se guardan directamente en el aula (sin usar Google Drive). Máximo 15 MB por archivo.</p>
 
         <div id="m-kept" style="margin-top:10px"></div>
         <div class="err" id="m-err"></div>
-        <div class="acts">
-          <button type="button" class="btn" id="m-save">Guardar material</button>
+        <div class="acts" style="margin-top:18px">
+          <button type="button" class="btn" id="m-save">Guardar</button>
           <button type="button" class="btn soft" id="m-cancel">Cancelar</button>
         </div>
       `;
@@ -107,14 +98,18 @@
       const keptBox = frm.querySelector("#m-kept");
       const renderKept = () => {
         if(!keptFiles.length){ keptBox.innerHTML = ""; return; }
-        keptBox.innerHTML = `<b style="font-size:.85rem">Archivos ya cargados:</b>` + keptFiles.map((f, idx) => `
+        keptBox.innerHTML = `<b style="font-size:.85rem">Archivos cargados:</b>` + keptFiles.map((f, idx) => `
           <div class="share-row">
             <span>📄 ${esc(f.name)} <small>(${Math.round((f.size||0)/1024)} KB)</small></span>
             <button type="button" class="btn del" data-rm="${idx}" style="padding:4px 10px;font-size:.8rem">Quitar</button>
           </div>
         `).join("");
         keptBox.querySelectorAll("[data-rm]").forEach(b => {
-          b.onclick = () => { keptFiles.splice(+b.dataset.rm, 1); renderKept(); };
+          b.onclick = () => {
+            const removed = keptFiles.splice(+b.dataset.rm, 1)[0];
+            if(removed && removed.id) removedIds.push(removed.id);
+            renderKept();
+          };
         });
       };
       renderKept();
@@ -123,7 +118,7 @@
       frm.querySelector("#m-save").onclick = async () => {
         const title = frm.querySelector("#m-tit").value.trim();
         const err = frm.querySelector("#m-err");
-        if(!title){ err.textContent = "Escribí un título para el material."; return; }
+        if(!title){ err.textContent = "Escribí un título para guardar."; return; }
 
         const inputFiles = Array.from(frm.querySelector("#m-files").files || []);
         for(const f of inputFiles){
@@ -144,34 +139,28 @@
             const meta = await saveLocalFile(db, user.uid, inputFiles[i]);
             uploaded.push(meta);
           }
+          for(const oldId of removedIds) await deleteLocalFile(db, oldId);
 
           btn.textContent = "Guardando…";
           const payload = {
-            kind: "materials",
             title,
-            topic: frm.querySelector("#m-top").value.trim(),
-            date: frm.querySelector("#m-dt").value,
-            description: frm.querySelector("#m-desc").value.trim(),
+            descripcion: frm.querySelector("#m-desc").value.trim(),
             localFiles: [...keptFiles, ...uploaded],
-            updatedAt: Date.now()
+            files: Array.isArray(it.files) ? it.files : [],
+            updated: Date.now()
           };
-
-          const col = db.collection("schools").doc(scope.schoolId)
-                        .collection("courses").doc(scope.courseId)
-                        .collection("items");
+          if(it.guideId){ payload.guideId = it.guideId; payload.guideTitle = it.guideTitle || ""; }
 
           if(it.id){
-            await col.doc(it.id).update(payload);
+            await colRef.doc(it.id).set({ ...payload, created: it.created || Date.now() });
           }else{
-            payload.createdAt = Date.now();
-            await col.add(payload);
+            await colRef.add({ ...payload, created: Date.now() });
           }
           dlg.close();
-          if(onSaved) onSaved();
         }catch(e){
           err.textContent = "Error al guardar: " + (e.message || e);
           btn.disabled = false;
-          btn.textContent = "Guardar material";
+          btn.textContent = "Guardar";
         }
       };
 
