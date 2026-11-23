@@ -74,11 +74,13 @@ function render(){
   }
   if(tab==='consultas'){
     if(window.AulaConsultas){
+      const cObj = canEdit() ? courses.find(x => x.id===courseId) : studentCourse;
       AulaConsultas.render({
         main: $('#main'),
         db: fs,
         canReply: canEdit(),
         courseId,
+        courseData: cObj,
         schoolName: canEdit() ? spaceName() : (studentCourse?.escuela || ''),
         courseName: canEdit() ? courseName() : (studentCourse?.name || '')
       });
@@ -254,11 +256,41 @@ async function delSpace(){
   if(!confirm(`¿Borrar la escuela “${spaceName()}”?`)) return;
   try { await fs.collection('spaces').doc(spaceId).delete(); spaceId = ''; } catch(e){ alert('No se pudo borrar.'); }
 }
+
+function askCourse(title, val, pinVal, cb){
+  $('#frm').innerHTML = `<h3>${title}</h3>
+    <label>Nombre del curso *</label>
+    <input id="nm" value="${esc(val)}" placeholder="Ej: 3° Año B" autocomplete="off">
+    <label>Clave del aula (opcional, para que solo entren tus alumnos)</label>
+    <input id="cpin" value="${esc(pinVal || '')}" placeholder="Ej: mate3b o 4512" autocomplete="off">
+    <p class="note">Si ponés una clave, los alumnos tendrán que escribirla para entrar al curso y dejar consultas.</p>
+    <div class="acts" style="margin-top:22px"><button class="btn" id="nok">Guardar</button><button class="btn soft" id="ncx">Cancelar</button></div>`;
+  const ok = async () => {
+    const v = $('#nm').value.trim();
+    const p = $('#cpin').value.trim();
+    if(!v) return;
+    try { await cb(v, p); $('#dlg').close(); } catch(e){ console.error(e); alert('No se pudo guardar.'); }
+  };
+  $('#ncx').onclick = () => $('#dlg').close();
+  $('#nok').onclick = ok;
+  $('#nm').onkeydown = e => { if(e.key==='Enter') ok(); };
+  $('#cpin').onkeydown = e => { if(e.key==='Enter') ok(); };
+  $('#dlg').showModal(); $('#nm').focus();
+}
 function addCourse(){
   if(!spaceId){ alert('Primero creá una escuela.'); return; }
-  askName(`Nuevo curso en ${esc(spaceName())}`, '', async v => { const r = await fs.collection('courses').add({name:v, spaceId, escuela:spaceName(), created:Date.now()}); courseId = r.id; });
+  askCourse(`Nuevo curso en ${esc(spaceName())}`, '', '', async (v, pin) => {
+    const r = await fs.collection('courses').add({name:v, pin, modConsultas:true, spaceId, escuela:spaceName(), created:Date.now()});
+    courseId = r.id;
+  });
 }
-function renameCourse(){ if(!courseId) return; askName('Renombrar curso', courseName(), v => fs.collection('courses').doc(courseId).update({name:v})); }
+function renameCourse(){
+  if(!courseId) return;
+  const cur = courses.find(x => x.id===courseId) || {};
+  askCourse('Editar curso y clave', cur.name || '', cur.pin || '', (v, pin) =>
+    fs.collection('courses').doc(courseId).update({name:v, pin})
+  );
+}
 async function delCourse(){
   if(!courseId) return;
   if(!confirm(`¿Borrar el curso “${courseName()}” con todo su material, tareas, planificaciones y evaluaciones? No se puede deshacer.`)) return;
@@ -272,8 +304,10 @@ async function delCourse(){
 }
 function copyLink(){
   if(!courseId) return;
+  const cur = courses.find(x => x.id===courseId) || {};
   const url = location.origin + location.pathname + '?c=' + courseId;
-  (navigator.clipboard ? navigator.clipboard.writeText(url) : Promise.reject()).then(() => alert('Link copiado. Pasáselo a los alumnos de este curso:\n\n' + url)).catch(() => prompt('Copiá este link y pasáselo a los alumnos:', url));
+  const msg = cur.pin ? `Link y clave para los alumnos de ${cur.name}:\n\nEnlace: ${url}\nClave del aula: ${cur.pin}` : `Link copiado. Pasáselo a los alumnos de este curso:\n\n${url}`;
+  (navigator.clipboard ? navigator.clipboard.writeText(cur.pin ? `${url} (Clave: ${cur.pin})` : url) : Promise.reject()).then(() => alert(msg)).catch(() => prompt('Copiá estos datos y pasáselos a los alumnos:', cur.pin ? `${url} | Clave: ${cur.pin}` : url));
 }
 
 function renderPicker(){
@@ -284,7 +318,7 @@ function renderPicker(){
   el.innerHTML = `<label>Escuela</label>
     <div class="pk"><select id="sp" aria-label="Escuela">${opts(spaces, spaceId, '— ninguna —')}</select><button class="ib" id="sp-a" title="Nueva escuela">＋</button><button class="ib" id="sp-e" title="Renombrar">✏️</button><button class="ib" id="sp-d" title="Borrar">🗑</button></div>
     <label>Curso</label>
-    <div class="pk"><select id="cu" aria-label="Curso">${opts(cs, courseId, '— ninguno —')}</select><button class="ib" id="cu-a" title="Nuevo curso">＋</button><button class="ib" id="cu-e" title="Renombrar">✏️</button><button class="ib" id="cu-d" title="Borrar">🗑</button></div>
+    <div class="pk"><select id="cu" aria-label="Curso">${opts(cs, courseId, '— ninguno —')}</select><button class="ib" id="cu-a" title="Nuevo curso">＋</button><button class="ib" id="cu-e" title="Editar curso y clave">✏️</button><button class="ib" id="cu-d" title="Borrar">🗑</button></div>
     <button class="btn soft lnk" id="lnk" ${courseId?'':'disabled'}>🔗 Link para alumnos</button>`;
   $('#sp').onchange = e => { spaceId = e.target.value; courseId = ''; syncSel(); };
   $('#cu').onchange = e => { courseId = e.target.value; syncSel(); };
@@ -319,8 +353,36 @@ if(!configured){
     } else if(qc){
       renderPicker(); render();
       fs.collection('courses').doc(qc).get().then(d => {
-        if(d.exists){ studentCourse = {id:d.id, ...d.data()}; courseId = d.id; subbed = d.id; subscribe(); }
-        else { badLink = true; render(); }
+        if(!d.exists){ badLink = true; render(); return; }
+        const cData = {id:d.id, ...d.data()};
+        const reqPin = (cData.pin || '').trim();
+        const saved = sessionStorage.getItem('aula_key_' + d.id) || '';
+        if(reqPin && saved !== reqPin){
+          $('#main').innerHTML = `
+            <div class="empty" style="max-width:440px;margin:20px auto;text-align:left">
+              <div class="big" style="text-align:center">🔒 Curso protegido</div>
+              <p style="text-align:center">Ingresá la clave de <b>${esc(cData.name)}</b> que te dio tu profesora.</p>
+              <label>Clave del aula</label>
+              <input id="gate-pin" type="password" placeholder="Escribí la clave acá" autocomplete="off">
+              <div class="err" id="gate-err"></div>
+              <div class="acts" style="justify-content:center">
+                <button class="btn" id="gate-ok">Entrar al curso</button>
+              </div>
+            </div>`;
+          const check = () => {
+            const val = $('#gate-pin').value.trim();
+            if(val === reqPin){
+              sessionStorage.setItem('aula_key_' + d.id, val);
+              studentCourse = cData; courseId = d.id; subbed = d.id; subscribe();
+            } else {
+              $('#gate-err').textContent = 'Clave incorrecta. Revisá mayúsculas y números.';
+            }
+          };
+          $('#gate-ok').onclick = check;
+          $('#gate-pin').onkeydown = e => { if(e.key==='Enter') check(); };
+          return;
+        }
+        studentCourse = cData; courseId = d.id; subbed = d.id; subscribe();
       }).catch(() => { badLink = true; render(); });
     } else { renderPicker(); subscribe(); }
   });
