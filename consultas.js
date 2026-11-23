@@ -1,4 +1,4 @@
-/* consultas.js — Foro de dudas y respuestas por Escuela y Curso */
+/* consultas.js — Muro de consultas y respuestas en courses/{courseId}/consultas */
 (function(){
   function esc(s){
     return String(s ?? "").replace(/[&<>"']/g, c => ({
@@ -15,29 +15,18 @@
 
   window.AulaConsultas = {
     async render(ctx){
-      const { main, db, user, scope, schoolName, courseName } = ctx;
-      if(!scope || !scope.schoolId || !scope.courseId){
-        main.innerHTML = `
-          <div class="top"><h2>Consultas del curso</h2></div>
-          <div class="empty"><div class="big">Seleccioná una escuela y un curso</div><p>Elegí un curso en el menú de la izquierda para ver o dejar consultas.</p></div>
-        `;
-        return;
-      }
-
-      const colRef = db.collection("schools").doc(scope.schoolId)
-                       .collection("courses").doc(scope.courseId)
-                       .collection("consultas");
-
+      const { main, db, canReply, courseId, schoolName, courseName } = ctx;
+      const colRef = db.collection("courses").doc(courseId).collection("consultas");
       const savedName = localStorage.getItem("aula_alumno_nombre") || "";
 
       main.innerHTML = `
         <div class="top">
           <h2>Consultas — ${esc(courseName || "Curso")}</h2>
         </div>
-        <p class="lead">Espacio de preguntas y respuestas de <b>${esc(schoolName || "")}</b>. Los alumnos pueden dejar sus dudas sobre los temas o tareas y el docente responde aquí mismo.</p>
+        <p class="lead">Espacio de preguntas y respuestas de <b>${esc(schoolName || "")}</b>. Los alumnos dejan sus dudas sobre los temas o tareas y la profesora responde aquí mismo.</p>
 
         <div class="gd-box" style="border-top-color:var(--ac)">
-          <h3 style="margin:0 0 8px;font:700 1.15rem var(--fd);color:var(--ac)">✍️ Dejar una consulta al profe</h3>
+          <h3 style="margin:0 0 8px;font:700 1.15rem var(--fd);color:var(--ac)">✍️ Dejar una consulta a la profesora</h3>
           <div class="row">
             <div>
               <label style="margin-top:4px">Tu nombre y apellido *</label>
@@ -68,7 +57,7 @@
             listBox.innerHTML = `
               <div class="empty">
                 <div class="big">Todavía no hay consultas en este curso</div>
-                <p>Cuando un alumno escriba una duda arriba, aparecerá acá para que puedas responderle.</p>
+                <p>Cuando un alumno escriba una duda arriba, aparecerá acá para poder responderle.</p>
               </div>`;
             return;
           }
@@ -100,14 +89,14 @@
                   ${hasReply ? `
                     <div style="margin-top:14px;padding:12px 16px;border-radius:14px;background:var(--materials-bg);border:1.5px solid var(--materials-hl)">
                       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
-                        <b style="color:var(--materials-ink);font-size:.9rem">👩‍🏫 Respuesta del docente</b>
+                        <b style="color:var(--materials-ink);font-size:.9rem">👩‍🏫 Respuesta de la profesora</b>
                         <small style="color:var(--materials-ink);opacity:.8">${fmtDate(q.repliedAt)}</small>
                       </div>
                       <p style="margin:6px 0 0;white-space:pre-wrap;color:var(--tx)">${esc(q.reply)}</p>
                     </div>
                   ` : ""}
 
-                  ${user ? `
+                  ${canReply ? `
                     <div class="acts" style="margin-top:12px">
                       <button type="button" class="btn soft" data-reply="${doc.id}">${hasReply ? "✏️ Editar respuesta" : "💬 Responder"}</button>
                       <button type="button" class="btn del" data-del="${doc.id}">Borrar</button>
@@ -127,7 +116,7 @@
 
           listBox.innerHTML = html;
 
-          if(user){
+          if(canReply){
             listBox.querySelectorAll("[data-reply]").forEach(btn => {
               btn.onclick = () => {
                 const box = listBox.querySelector("#rbox-" + btn.dataset.reply);
