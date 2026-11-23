@@ -1,5 +1,5 @@
 /* Tutor IA: responde únicamente sobre matemática y consulta los PDF cargados en la Biblioteca. */
-const TUTOR = { history: [], key: localStorage.getItem('gemini_key') || '', busy: false, imgs: [], vision: localStorage.getItem('tutor_vision') === '1', docs: {} };
+const TUTOR = { history: (() => { try { return JSON.parse(sessionStorage.getItem('tutor_hist') || '[]'); } catch (e) { return []; } })(), key: localStorage.getItem('gemini_key') || '', busy: false, imgs: [], vision: localStorage.getItem('tutor_vision') === '1', docs: {} };
 
 // 1. Busca las páginas más relevantes en los libros ya cargados (LIB.pages)
 function tutorContext(pregunta) {
@@ -26,6 +26,34 @@ function tutorContext(pregunta) {
   const fuentes = top.map(h => `${h.pg.bt} (pág. ${h.pg.p})`);
   const paginas = top.map(h => ({ b: h.pg.b, bt: h.pg.bt, p: h.pg.p }));
   return { texto, fuentes, libros, paginas };
+}
+
+// Memoria de la conversación: a Gemini se le mandan los últimos intercambios para que entienda "¿y el ítem b?", "con otros números", etc.
+const TUTOR_MEM = 4;                                            // cantidad de intercambios (pregunta + respuesta) que recuerda
+function tutorClip(t) {
+  t = String(t || '').replace(/\[\[FIG:\d+\]\]/g, '[se mostró un gráfico]')
+    .replace(/```(?:svg|xml|html)?\s*<svg[\s\S]*?<\/svg>\s*```|<svg[\s\S]*?<\/svg>/gi, '[se mostró una figura]').trim();
+  return (t.length > 3000 ? t.slice(0, 3000) + '…' : t) || '(sin texto)';
+}
+function tutorMemory() {
+  const h = TUTOR.history.filter(m => !m.live), pairs = [];
+  for (let i = 0; i < h.length - 1; i++) {
+    if (h[i].role === 'user' && h[i + 1].role === 'ai' && !/^\s*⚠/.test(h[i + 1].text || '')) { pairs.push([h[i], h[i + 1]]); i++; }
+  }
+  const last = pairs.slice(-TUTOR_MEM); let withImg = -1;
+  last.forEach((p, k) => { if (p[0].imgs && p[0].imgs.length) withImg = k; });     // solo se reenvían las imágenes de la última consulta que las tuvo
+  return last.flatMap(([u, a], k) => {
+    const parts = [];
+    if (k === withImg) u.imgs.forEach(url => parts.push({ inline_data: { mime_type: 'image/jpeg', data: url.split(',')[1] } }));
+    parts.push({ text: u.text || '(imagen adjunta)' });
+    return [{ role: 'user', parts }, { role: 'model', parts: [{ text: tutorClip(a.text) }] }];
+  });
+}
+function tutorSaveSession() {
+  try {
+    const h = TUTOR.history.filter(m => !m.live).slice(-20).map(m => ({ role: m.role, text: String(m.text || '').replace(/\[\[FIG:\d+\]\]/g, ''), fuentes: m.fuentes, vistas: m.vistas, calcs: m.calcs, draw: m.draw }));
+    sessionStorage.setItem('tutor_hist', JSON.stringify(h));
+  } catch (e) {}
 }
 
 // 2. Llama a Gemini con STREAMING: el texto aparece a medida que se genera
@@ -100,9 +128,11 @@ async function tutorRun(modelo, base, live, cfg, onText, showStatus) {
 }
 
 async function tutorAsk(pregunta, imgs = [], opts = {}) {
-  if (!TUTOR.key) await tutorLoadKey(true);                    // por si la clave está guardada en tu cuenta
+  tutorSyncUser();
+  await tutorLoadKey();                                        // clave guardada en tu cuenta (o la que compartió la profesora)
+  if (!TUTOR.key) await tutorLoadKey(true);
   if (!TUTOR.key) {
-    alert('Primero pegá tu API Key gratuita de Google AI Studio (se guarda una sola vez).');
+    alert(canEdit() ? 'Primero pegá tu API Key gratuita de Google AI Studio (se guarda una sola vez).' : 'Tu profesora todavía no habilitó el tutor para la biblioteca compartida.');
     return;
   }
   if (!LIB.loaded) {                                           // esperar a que termine de abrirse la biblioteca
@@ -111,10 +141,14 @@ async function tutorAsk(pregunta, imgs = [], opts = {}) {
     while (LIB.loading && Date.now() - t0 < 15000) await new Promise(r => setTimeout(r, 200));
   }
 
+  const memoria = tutorMemory();                               // lo que se habló antes (se calcula ANTES de agregar esta pregunta)
+  const prevQ = [...TUTOR.history].reverse().find(m => m.role === 'user' && m.text);
+  const corta = pregunta.split(/\s+/).filter(Boolean).length <= 5;
+  const consulta = (!opts.draw && corta && prevQ) ? pregunta + ' ' + prevQ.text : pregunta;   // un "¿y el ítem b?" busca con la pregunta anterior
   TUTOR.history.push({ role: 'user', text: pregunta, imgs: imgs.map(i => i.url), draw: !!opts.draw });
   TUTOR.busy = true;
 
-  const ctx = opts.draw ? { texto: '', fuentes: [], libros: [] } : tutorContext(pregunta);   // al dibujar no hace falta buscar en los libros
+  const ctx = opts.draw ? { texto: '', fuentes: [], libros: [] } : tutorContext(consulta);   // al dibujar no hace falta buscar en los libros
   const listaLibros = ctx.libros.length
     ? `LIBROS DISPONIBLES EN LA BIBLIOTECA:\n- ${ctx.libros.join('\n- ')}\n\n`
     : '';
@@ -128,7 +162,8 @@ REGLAS ESTRICTAS:
 5. Si el usuario adjunta una imagen: si contiene un ejercicio, problema, gráfico, figura o resolución de matemática, primero transcribí brevemente lo que ves y después resolvelo o analizalo paso a paso (si es una resolución del alumno, señalá con claridad dónde hay errores). Si la imagen no tiene nada que ver con matemática, aplicá la regla 1. Si algo no se lee bien, decilo en vez de inventarlo.
 6. FIGURAS: cuando haya que dibujar (o el usuario lo pida), hacé la figura como un único bloque \`\`\`svg con un <svg> completo y válido: viewBox="0 0 480 360", primero un <rect> blanco de fondo, estilo en blanco y negro apto para imprimir (trazo negro, grises claros como relleno, sin colores fuertes), todos los estilos como atributos (nada de <style>, clases ni imágenes externas), texto en <text> plano con font-size 15 o 16 (sin LaTeX; usá símbolos como ², √, ° y letras como x). Dibujá a escala aproximada coherente con los datos, marcá el ángulo recto con un cuadradito, rotulá los lados con sus medidas y las unidades, y la incógnita como x (o con "?"). La figura del enunciado NO muestra el resultado. Tené cuidado de que ningún texto se salga del cuadro ni se superponga.
 7. PÁGINAS DE LOS LIBROS: si junto a la consulta llegan imágenes rotuladas como "Imagen de la página X del libro Y", son páginas reales de los libros cargados: leé de ahí las figuras, gráficos, tablas y fórmulas (el texto extraído puede estar incompleto), y citá libro y página. Si algo de la página no se ve bien, decilo en vez de inventarlo.
-8. HERRAMIENTAS: tenés una calculadora (calcular) y un graficador (graficar). Usá calcular para TODA cuenta numérica (potencias, raíces, fracciones, porcentajes, trigonometría, logaritmos) y para verificar el resultado final reemplazándolo en el problema original: no hagas cuentas de memoria. Usá graficar cada vez que haya que graficar funciones (rectas, parábolas, sistemas, exponenciales), eligiendo xmin/xmax para que se vean raíces, vértice e intersecciones, y apoyate en los puntos notables que te devuelve. El gráfico se muestra solo: no escribas código ni llamadas a funciones en tu respuesta y no lo describas punto por punto. Si una herramienta devuelve un error, corregí la expresión y reintentá.`;
+8. HERRAMIENTAS: tenés una calculadora (calcular) y un graficador (graficar). Usá calcular para TODA cuenta numérica (potencias, raíces, fracciones, porcentajes, trigonometría, logaritmos) y para verificar el resultado final reemplazándolo en el problema original: no hagas cuentas de memoria. Usá graficar cada vez que haya que graficar funciones (rectas, parábolas, sistemas, exponenciales), eligiendo xmin/xmax para que se vean raíces, vértice e intersecciones, y apoyate en los puntos notables que te devuelve. El gráfico se muestra solo: no escribas código ni llamadas a funciones en tu respuesta y no lo describas punto por punto. Si una herramienta devuelve un error, corregí la expresión y reintentá.
+9. MEMORIA: esta es una conversación continua. Usá los mensajes anteriores para entender referencias como "y el ítem b", "explicámelo más fácil", "con otros números" o "ahora graficalo"; retomá lo ya dicho sin repetirlo entero. Si no queda claro a qué se refiere el usuario, preguntale.`;
 
   const pq = pregunta || 'Analizá la imagen adjunta.';
   const nImg = imgs.length ? `AVISO: el usuario adjuntó ${imgs.length} imagen(es).\n\n` : '';
@@ -169,7 +204,7 @@ TAREA: esto es un problema para resolver con el Teorema de Pitágoras (si el usu
       live.text = ''; live.figs = []; live.calcs = [];
       const base = {
         system_instruction: { parts: [{ text: systemPrompt }] }, maxOut: opts.draw ? 8192 : 4096,
-        contents: [{ role: 'user', parts: [...pageParts, ...imgs.map(i => ({ inline_data: { mime_type: i.mime, data: i.b64 } })), { text: promptFinal + extra }] }]
+        contents: [...memoria, { role: 'user', parts: [...pageParts, ...imgs.map(i => ({ inline_data: { mime_type: i.mime, data: i.b64 } })), { text: promptFinal + extra }] }]
       };
       try {
         const txt = await tutorRun(modelo, base, live, cfg, onText, showStatus);
@@ -195,6 +230,7 @@ TAREA: esto es un problema para resolver con el Teorema de Pitágoras (si el usu
   else if (ultimoError && /demasiado|abort/i.test(ultimoError)) live.text += '\n\n(La respuesta se cortó antes de terminar.)';
   TUTOR.busy = false;
   renderTutor();
+  tutorSaveSession();
 }
 
 // ===== Herramientas matemáticas para la IA: calculadora exacta y gráficos de funciones =====
@@ -485,27 +521,56 @@ function tutorShowPrev() {
 // Clave de la IA: se guarda UNA vez en tu cuenta (Firestore, config/tutor: solo la profesora puede leerla)
 // y se recupera sola al ingresar desde cualquier dispositivo.
 const tutorKeyDoc = () => fs.collection('config').doc('tutor');
+const tutorSharedDoc = () => fs.collection('config').doc('tutor_lectores');   // copia de la clave que pueden leer los lectores de la biblioteca
+const tutorIsReader = () => !canEdit() && typeof isReader === 'function' && isReader();
+function tutorSyncUser() {
+  const uid = (typeof user !== 'undefined' && user) ? user.uid : '';
+  if (TUTOR.keyUid && TUTOR.keyUid !== uid) {                   // cambió la persona que usa la página: no se arrastra ni la clave ni la charla
+    TUTOR.key = ''; TUTOR.keyP = null; TUTOR.keyState = ''; TUTOR.keyNote = ''; TUTOR.share = false; TUTOR.history = []; TUTOR.imgs = [];
+    try { sessionStorage.removeItem('tutor_hist'); } catch (e) {}
+  }
+  TUTOR.keyUid = uid;
+}
 function tutorLoadKey(force) {
-  if (!canEdit() || typeof fs === 'undefined' || !fs) return Promise.resolve(false);
+  tutorSyncUser();
+  if (typeof fs === 'undefined' || !fs) return Promise.resolve(false);
+  const lector = tutorIsReader();
+  if (!canEdit() && !lector) return Promise.resolve(false);
   if (TUTOR.keyP && !force) return TUTOR.keyP;
   TUTOR.keyState = 'cargando';
   return (TUTOR.keyP = (async () => {
     try {
-      const d = await tutorKeyDoc().get(), cloud = d.exists ? String(d.data().geminiKey || '') : '';
-      if (cloud) { TUTOR.key = cloud; TUTOR.keyState = 'nube'; localStorage.removeItem('gemini_key'); }
-      else if (TUTOR.key) {                                     // clave que estaba solo en este navegador: se sube una vez
-        await tutorKeyDoc().set({ geminiKey: TUTOR.key, updated: Date.now() });
-        TUTOR.keyState = 'nube'; localStorage.removeItem('gemini_key');
-        TUTOR.keyNote = '☁️ Tu clave se pasó a tu cuenta: ya no hace falta pegarla de nuevo en otros dispositivos.';
-      } else TUTOR.keyState = '';
+      if (lector) {                                             // lector de la biblioteca: usa la clave que compartió la profesora (solo en memoria)
+        const d = await tutorSharedDoc().get(), k = d.exists ? String(d.data().geminiKey || '') : '';
+        TUTOR.key = k; TUTOR.keyState = k ? 'lector' : 'sinclave'; TUTOR.keyNote = '';
+      } else {
+        const d = await tutorKeyDoc().get(), dat = d.exists ? d.data() : {}, cloud = String(dat.geminiKey || '');
+        if (cloud) { TUTOR.key = cloud; TUTOR.share = !!dat.compartida; TUTOR.keyState = 'nube'; localStorage.removeItem('gemini_key'); }
+        else if (TUTOR.key) {                                   // clave que estaba solo en este navegador: se sube una vez
+          await tutorKeyDoc().set({ geminiKey: TUTOR.key, compartida: false, updated: Date.now() });
+          TUTOR.keyState = 'nube'; localStorage.removeItem('gemini_key');
+          TUTOR.keyNote = '☁️ Tu clave se pasó a tu cuenta: ya no hace falta pegarla de nuevo en otros dispositivos.';
+        } else TUTOR.keyState = '';
+      }
     } catch (e) {
       console.warn('No se pudo leer o guardar la clave en la nube', e);
-      TUTOR.keyState = TUTOR.key ? 'local' : '';
-      TUTOR.keyNote = 'No se pudo consultar tu clave guardada en la nube (revisá tu conexión).';
+      if (lector) {
+        TUTOR.key = ''; TUTOR.keyState = 'sinclave';
+        TUTOR.keyNote = e.code === 'permission-denied' ? 'No tenés permiso para usar el tutor todavía. Avisale a tu profesora.' : 'No se pudo conectar. Revisá tu conexión e intentá de nuevo.';
+      } else {
+        TUTOR.keyState = TUTOR.key ? 'local' : '';
+        TUTOR.keyNote = 'No se pudo consultar tu clave guardada en la nube (revisá tu conexión).';
+      }
     }
     tutorRefreshKeyUi();
     return !!TUTOR.key;
   })());
+}
+function tutorReaderNote() {
+  const st = TUTOR.keyState;
+  if (st === 'cargando') return '⏳ Preparando el tutor…';
+  if (st === 'lector') return '✅ El tutor está habilitado por tu profesora: podés preguntar sin cargar ninguna clave.';
+  return '⚠️ ' + (TUTOR.keyNote || 'Tu profesora todavía no habilitó el tutor para la biblioteca compartida.');
 }
 function tutorKeyPanel() {
   const st = TUTOR.keyState;
@@ -516,10 +581,13 @@ function tutorKeyPanel() {
       <input id="tu-key" type="password" autocomplete="off" placeholder="${TUTOR.key ? 'Ya hay una clave guardada: pegá otra solo para reemplazarla' : 'Pegá tu API Key (AIzaSy...)'}">
       <button class="btn" id="tu-save">Guardar clave</button>
     </div>
+    ${TUTOR.key && TUTOR.keyState === 'nube' ? `<label class="chk" style="margin-top:12px"><input type="checkbox" id="tu-share" ${TUTOR.share ? 'checked' : ''}> 👥 Que las personas habilitadas en la <b>Biblioteca compartida</b> puedan usar el tutor con esta clave (sin cargar ninguna)</label>
+      <p class="note" style="margin:2px 0 0">Esas personas gastan tu cuota gratuita de Gemini y, si saben mirar las herramientas del navegador, podrían llegar a ver la clave. Conviene usar una clave gratuita y restringida a tu sitio web.</p>` : ''}
     ${TUTOR.key ? '<div class="acts" style="margin-top:8px"><button class="btn del" id="tu-del">Quitar la clave</button></div>' : ''}
     ${TUTOR.keyNote ? `<p class="note" style="margin-top:8px">${esc(TUTOR.keyNote)}</p>` : ''}`;
 }
 function tutorRefreshKeyUi() {
+  const rn = document.getElementById('tu-rdnote'); if (rn) rn.textContent = tutorReaderNote();
   const box = document.getElementById('tu-keybox'); if (!box) return;
   box.innerHTML = tutorKeyPanel();
   if (!TUTOR.key) box.open = true; else if (TUTOR.keyState === 'nube' && !TUTOR.keyNote) box.open = false;
@@ -533,7 +601,8 @@ function tutorBindKey() {
     if (!/^AIza[\w-]{20,}$/.test(k) && !confirm('Esa clave no tiene el formato habitual (empieza con “AIza”). ¿Guardarla igual?')) return;
     sv.disabled = true; TUTOR.key = k; TUTOR.keyNote = '';
     try {
-      await tutorKeyDoc().set({ geminiKey: k, updated: Date.now() });
+      await tutorKeyDoc().set({ geminiKey: k, compartida: !!TUTOR.share, updated: Date.now() });
+      if (TUTOR.share) await tutorSharedDoc().set({ geminiKey: k, updated: Date.now() });     // si la compartís, la copia se actualiza sola
       TUTOR.keyState = 'nube'; localStorage.removeItem('gemini_key'); TUTOR.keyNote = '✓ Guardada. Ya no tenés que volver a pegarla.';
     } catch (e) {
       console.error(e); TUTOR.keyState = 'local'; localStorage.setItem('gemini_key', k);
@@ -541,24 +610,43 @@ function tutorBindKey() {
     }
     tutorRefreshKeyUi();
   };
+  const sh = document.getElementById('tu-share');
+  if (sh) sh.onchange = async () => {
+    const on = sh.checked;
+    if (on && !confirm('Las personas que habilitaste en la Biblioteca compartida van a poder usar el tutor con tu clave de Gemini (gastan tu cuota gratuita). ¿Activarlo?')) { sh.checked = false; return; }
+    sh.disabled = true;
+    try {
+      if (on) await tutorSharedDoc().set({ geminiKey: TUTOR.key, updated: Date.now() }); else await tutorSharedDoc().delete();
+      await tutorKeyDoc().set({ geminiKey: TUTOR.key, compartida: on, updated: Date.now() });
+      TUTOR.share = on;
+      TUTOR.keyNote = on ? '✓ Listo: las personas de la biblioteca compartida ya pueden usar el tutor.' : 'Dejaste de compartir la clave: el tutor ya no funciona en la biblioteca compartida.';
+    } catch (e) {
+      console.error(e);
+      TUTOR.keyNote = 'No se pudo cambiar (' + (e.code === 'permission-denied' ? 'publicá las reglas nuevas de Firebase: archivo firestore.rules' : 'revisá tu conexión') + ').';
+    }
+    tutorRefreshKeyUi();
+  };
   const dl = document.getElementById('tu-del');
   if (dl) dl.onclick = async () => {
-    if (!confirm('¿Quitar la clave de la IA? Vas a tener que pegarla de nuevo para usar el tutor.')) return;
-    TUTOR.key = ''; TUTOR.keyState = ''; TUTOR.keyNote = ''; localStorage.removeItem('gemini_key');
-    try { await tutorKeyDoc().delete(); TUTOR.keyNote = 'Clave quitada de tu cuenta.'; } catch (e) { console.error(e); TUTOR.keyNote = 'Se quitó de este navegador, pero no se pudo borrar de la nube.'; }
+    if (!confirm('¿Quitar la clave de la IA? Vas a tener que pegarla de nuevo para usar el tutor' + (TUTOR.share ? ' y la biblioteca compartida dejará de poder usarlo' : '') + '.')) return;
+    TUTOR.key = ''; TUTOR.keyState = ''; TUTOR.keyNote = ''; TUTOR.share = false; localStorage.removeItem('gemini_key');
+    try { try { await tutorSharedDoc().delete(); } catch (e) {} await tutorKeyDoc().delete(); TUTOR.keyNote = 'Clave quitada de tu cuenta.'; }
+    catch (e) { console.error(e); TUTOR.keyNote = 'Se quitó de este navegador, pero no se pudo borrar de la nube.'; }
     tutorRefreshKeyUi();
   };
 }
 
 // 3. Interfaz visual dentro de la app
 function renderTutor() {
+  tutorSyncUser();
   if (!LIB.loaded && !LIB.loading) libEnsure();
   const m = $('#main');
   m.innerHTML = `
     <div class="top"><h2>Tutor IA de Matemática</h2></div>
     <p class="lead">Hacé consultas matemáticas o pedile que busque explicaciones y ejercicios dentro de tus PDF cargados.</p>
-    ${canEdit() ? `<details class="gd-box" id="tu-keybox" ${TUTOR.key && TUTOR.keyState !== 'local' ? '' : 'open'}>${tutorKeyPanel()}</details>` : ''}
+    ${canEdit() ? `<details class="gd-box" id="tu-keybox" ${TUTOR.key && TUTOR.keyState !== 'local' ? '' : 'open'}>${tutorKeyPanel()}</details>` : `<p class="note" id="tu-rdnote">${esc(tutorReaderNote())}</p>`}
     <label class="chk"><input type="checkbox" id="tu-vis" ${TUTOR.vision ? 'checked' : ''}> 👁 Que mire las páginas de mis libros como imagen (ve figuras, gráficos y fórmulas; tarda un poco más)</label>
+    ${TUTOR.history.length ? `<div class="note" style="margin:6px 0">🧠 Recuerda los últimos ${Math.min(tutorMemory().length / 2, TUTOR_MEM)} intercambio(s) de esta conversación. <button class="btn soft" id="tu-new" ${TUTOR.busy ? 'disabled' : ''}>🗑 Nueva conversación</button></div>` : ''}
     <div class="gd-box" id="tu-chat" style="min-height:260px;max-height:520px;overflow-y:auto;display:flex;flex-direction:column;gap:12px">
       ${TUTOR.history.length ? TUTOR.history.map((msg, idx) => `
         <div style="padding:12px 14px;border-radius:12px;background:${msg.role === 'user' ? 'var(--plans-bg)' : 'var(--sf2)'};border:1px solid var(--bd)">
@@ -591,7 +679,9 @@ function renderTutor() {
   }
 
   tutorBindKey();
-  if (canEdit()) tutorLoadKey();                                // trae la clave guardada en tu cuenta
+  const nw = $('#tu-new');
+  if (nw) nw.onclick = () => { if (TUTOR.busy) return; TUTOR.history = []; TUTOR.imgs = []; tutorSaveSession(); renderTutor(); };
+  tutorLoadKey();                                // trae la clave guardada en tu cuenta
 
   const send = draw => {
     const val = $('#tu-in').value.trim();
@@ -617,6 +707,7 @@ function renderTutor() {
   chat.querySelectorAll('[data-redo]').forEach(b => b.onclick = () => {
     const i = +b.dataset.redo, u = TUTOR.history[i - 1];
     if (!u || u.role !== 'user' || TUTOR.busy) return;
+    TUTOR.history.splice(i - 1, 2);                           // se descarta el intento anterior
     tutorAsk(u.text, (u.imgs || []).map(x => ({ mime: 'image/jpeg', b64: x.split(',')[1], url: x })), { draw: u.draw });
   });
   $('#tu-send').onclick = () => send(false);
