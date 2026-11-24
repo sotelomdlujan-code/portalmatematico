@@ -9,7 +9,7 @@ const SECTIONS = {
     ['contenidos','Contenidos a evaluar','area'],['criterios','Criterios de evaluación','area'],['notas','Notas y ponderación','area']]},
   gen: {label:'Generar examen', ico:'🧮', teacher:true, lead:'', fields:[]},
   lib: {label:'Biblioteca', ico:'📖', teacher:true, reader:true, lead:'', fields:[]},
-  guides: {label:'Guías', ico:'📑', teacher:true, lead:'', fields:[]},
+  guides: {label:'Guías', ico:'📑', teacher:true, reader:true, lead:'', fields:[]},
   tutor: {label:'Tutor IA', ico:'🤖', teacher:true, reader:true, lead:'Consultá dudas de matemática basadas en tus libros cargados.', fields:[]},
   materials: {label:'Material', ico:'📚', teacher:false, lead:'Apuntes, libros y recursos para estudiar.', empty:'Todavía no hay material', fields:[
     ['title','Título','text'],['descripcion','Descripción','area']]},

@@ -430,7 +430,7 @@ function lbDdLabel(){
   if(k === 1) return LIB.books.find(b => LIB.inc.has(b.id)).title;
   return k + ' de ' + n + ' libros';
 }
-const lbHead = () => `<div class="top"><h2>Biblioteca</h2><div class="tools">${lbRO() ? '' : '<button class="btn" id="lb-add">Agregar PDF</button><input type="file" id="lb-file" accept="application/pdf,.pdf" multiple hidden>'}</div></div><p class="lead">${lbRO() ? 'Buscá por tema y descargá los PDF que necesites.' : 'Cargá tus PDF y libros y buscá por tema. Podés armar guías con las páginas que elijas.'}</p>`;
+const lbHead = () => `<div class="top"><h2>Biblioteca</h2><div class="tools">${lbRO() ? '' : '<button class="btn" id="lb-add">Agregar PDF</button><input type="file" id="lb-file" accept="application/pdf,.pdf" multiple hidden>'}</div></div><p class="lead">${lbRO() ? 'Buscá por tema, descargá los PDF o armá tu propia guía con las páginas que elijas.' : 'Cargá tus PDF y libros y buscá por tema. Podés armar guías con las páginas que elijas.'}</p>`;
 function renderLib(){
   const m = document.getElementById('main');
   if(!LIB.loaded){
@@ -524,7 +524,7 @@ function lbPickLabels(){
 function lbCard(g, h, R){
   const key = g.id + '|' + h.pg.p;
   if(h.html === undefined) h.html = lbSnip(h.pg.t, R.stems);          // el fragmento se calcula una sola vez
-  return `<article class="lb-res"><label class="lb-pg"><input type="checkbox" class="lb-pick" value="${key}" ${LIB.pick.has(key) ? 'checked' : ''}> <b>Página ${h.pg.p}</b></label><div class="lb-snip">${h.html}</div><div class="lb-act">${lbRO() ? '' : `<button class="btn" data-ga="${key}">➕ A la guía</button> `}<button class="btn soft" data-v="${key}">📄 Ver la página</button> <button class="btn soft" data-t="${key}">Ver texto</button></div><div class="lb-full" hidden></div></article>`;
+  return `<article class="lb-res"><label class="lb-pg"><input type="checkbox" class="lb-pick" value="${key}" ${LIB.pick.has(key) ? 'checked' : ''}> <b>Página ${h.pg.p}</b></label><div class="lb-snip">${h.html}</div><div class="lb-act"><button class="btn" data-ga="${key}">➕ A la guía</button> <button class="btn soft" data-v="${key}">📄 Ver la página</button> <button class="btn soft" data-t="${key}">Ver texto</button></div><div class="lb-full" hidden></div></article>`;
 }
 function lbMore(upTo){
   const R = LIB.res, list = document.getElementById('lb-list'), more = document.getElementById('lb-more'); if(!R || !list) return;
@@ -550,7 +550,7 @@ function lbShow(){
   if(!R.flat) R.flat = R.groups.flatMap(g => g.items.map(h => ({g, h})));
   R.drawn = 0;
   out.innerHTML = `<div class="lb-sum"><span class="lb-st"><b>${R.total}</b> página(s) sobre “${esc(R.Q.label)}” en <b>${R.groups.length}</b> de tus ${R.docs} documento(s).${R.total > R.shown ? ` Te muestro las ${R.shown} más relevantes.` : ''}</span>
-    <span class="lb-print lb-bar2">${lbRO() ? '' : '<button class="btn" id="lb-gd"></button> '}<button class="btn soft" id="lb-prt"></button> <button class="btn soft" id="lb-all"></button></span></div><div id="lb-list"></div><div id="lb-more" class="lb-moreb"></div>`;
+    <span class="lb-print lb-bar2"><button class="btn" id="lb-gd"></button> <button class="btn soft" id="lb-prt"></button> <button class="btn soft" id="lb-all"></button></span></div><div id="lb-list"></div><div id="lb-more" class="lb-moreb"></div>`;
   lbPickLabels();
   lbMore(Math.max(LIB.shown || 0, LB_PAGE));
   const pageOf = key => { const [id, p] = key.split('|'); return LIB.pages.find(x => x.b === id && x.p === +p); };
@@ -609,7 +609,7 @@ async function lbViewer(id, p){
   if(!LBV.doc){
     try { const f = await lbGetPdf(id); if(f){ const pdfjs = await lbPdf(); LBV.doc = await pdfjs.getDocument({data:new Uint8Array(await f.arrayBuffer())}).promise; } } catch(e){ console.warn(e); }
   }
-  document.getElementById('lbv-g').style.display = lbRO() ? 'none' : '';
+  
   d.showModal(); lbPaint(p);
 }
 async function lbPaint(p){

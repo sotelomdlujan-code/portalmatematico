@@ -29,6 +29,7 @@ function guideRanges(txt, max){
   }
   return out;
 }
+const gRO = () => !canEdit();
 const bookTitle = id => (LIB.books.find(b => b.id === id) || {}).title || '(documento borrado)';
 
 async function guidePdfLib(){
@@ -40,7 +41,7 @@ const wins = t => String(t).replace(/[^\x20-\x7E\xA0-\xFF]/g, '');
 async function guideBuild(){
   const P = await guidePdfLib(), out = await P.PDFDocument.create(), src = {};
   const missing = [...new Set(GUIDE.items.map(i => i.b))].filter(b => !(LIB.books.find(x => x.id === b) || {}).hasPdf && true);
-  for(const b of missing){ let f = null; try { f = await lbDB.get('files', b); } catch(e){} if(!f) throw new Error('Falta el PDF original de “' + bookTitle(b) + '”. En la Biblioteca tocá “☁️ Subir PDF”.'); }
+  for(const b of missing){ let f = null; try { f = await lbDB.get('files', b); } catch(e){} if(!f) throw new Error('Falta el PDF original de “' + bookTitle(b) + '”.' + (gRO() ? ' Ese libro no se puede usar en guías todavía.' : ' En la Biblioteca tocá “☁️ Subir PDF”.')); }
   if(GUIDE.cover){
     const font = await out.embedFont(P.StandardFonts.HelveticaBold), pg = out.addPage([595, 842]);
     const words = wins(GUIDE.title || 'Guía').split(/\s+/), lines = []; let cur = '';
@@ -105,13 +106,24 @@ function guideShare(id){
   $('#dlg').showModal();
 }
 
+async function guidePreview(blob, title){
+  if(!window.AulaMateriales){ lbSave(blob, title + '.pdf'); return; }
+  const u = new Uint8Array(await blob.arrayBuffer());
+  const b64 = lbB64(u), stamp = Date.now();                    // una sola "parte": el visor la arma como si viniera de la nube
+  AulaMateriales.openViewer(fs, null, title + '.pdf', {
+    key: 'guia-vista', format: 'b64',
+    async getMeta(){ return {name: title + '.pdf', type: 'application/pdf', total: 1, createdAt: stamp}; },
+    async getChunks(){ return [{i: 0, d: b64}]; }
+  });
+}
 function renderGuides(){
   const m = $('#main');
   if(!LIB.loaded){ m.innerHTML = `<div class="top"><h2>Guías</h2></div><div class="empty"><div class="big">Abriendo la biblioteca…</div></div>`; libEnsure(); return; }
-  if(GUIDE.list === null){ GUIDE.list = []; guideLoadList(); }
+  const RO = gRO();
+  if(!RO && GUIDE.list === null){ GUIDE.list = []; guideLoadList(); }
   const items = GUIDE.items, bks = LIB.books;
   const rows = items.map((it, i) => `<div class="gd-item"><span class="gd-t"><b>${esc(bookTitle(it.b))}</b> <small>· página ${it.p}</small></span><button class="ib" data-up="${i}" title="Subir">▲</button><button class="ib" data-dn="${i}" title="Bajar">▼</button><button class="ib" data-rm="${i}" title="Quitar">✕</button></div>`).join('');
-  m.innerHTML = `<div class="top"><h2>Guías</h2></div><p class="lead">Armá un PDF nuevo con las páginas que elijas de tus libros y compartilo con tus alumnos.</p>
+  m.innerHTML = `<div class="top"><h2>Guías</h2></div><p class="lead">${RO ? 'Armá tu propia guía con las páginas que elijas, miralá y descargala. No se guarda en la página: queda solo en tu dispositivo.' : 'Armá un PDF nuevo con las páginas que elijas de tus libros y compartilo con tus alumnos.'}</p>
   ${GUIDE.note ? `<div class="lb-note">${esc(GUIDE.note)}</div>` : ''}
   <div class="gd-box"><h3 style="margin:0 0 4px">1 · Elegí las páginas</h3>
     <p class="note" style="margin:0 0 10px">Buscá en la <b>Biblioteca</b> y tocá “➕ A la guía”, o escribí los números de página acá.</p>
@@ -122,10 +134,10 @@ function renderGuides(){
     <label>Título de la guía</label><input id="gd-t" value="${esc(GUIDE.title)}">
     <label class="chk"><input type="checkbox" id="gd-c" ${GUIDE.cover ? 'checked' : ''}> Agregar una carátula con el título</label>
     <div id="gd-prog" class="note"></div>
-    <div class="acts"><button class="btn" id="gd-save" ${items.length ? '' : 'disabled'}>💾 Guardar en mis guías</button><button class="btn soft" id="gd-dl" ${items.length ? '' : 'disabled'}>⬇ Solo descargar</button>${items.length ? '<button class="btn del" id="gd-clr">Vaciar</button>' : ''}</div>
+    <div class="acts">${RO ? '' : `<button class="btn" id="gd-save" ${items.length ? '' : 'disabled'}>💾 Guardar en mis guías</button>`}<button class="btn soft" id="gd-view" ${items.length ? '' : 'disabled'}>👁 Ver la guía</button><button class="btn ${RO ? '' : 'soft'}" id="gd-dl" ${items.length ? '' : 'disabled'}>⬇ ${RO ? 'Descargar la guía' : 'Solo descargar'}</button>${items.length ? '<button class="btn del" id="gd-clr">Vaciar</button>' : ''}</div>
   </div>
-  <h3 class="lb-h">Mis guías (${(GUIDE.list || []).length})</h3>
-  ${(GUIDE.list || []).length ? GUIDE.list.map(g => `<div class="gd-item"><span class="gd-t"><b>${esc(g.title)}</b><br><small>${g.npages} páginas · ${new Date(g.created).toLocaleDateString('es-AR')}</small></span><button class="btn soft" data-sh="${g.id}">Compartir con un curso</button><button class="btn soft" data-dl="${g.id}">⬇</button><button class="ib" data-del="${g.id}" title="Borrar">🗑</button></div>`).join('') : '<p class="note">Todavía no guardaste guías.</p>'}`;
+  ${RO ? '' : `<h3 class="lb-h">Mis guías (${(GUIDE.list || []).length})</h3>`}
+  ${RO ? '' : (GUIDE.list || []).length ? GUIDE.list.map(g => `<div class="gd-item"><span class="gd-t"><b>${esc(g.title)}</b><br><small>${g.npages} páginas · ${new Date(g.created).toLocaleDateString('es-AR')}</small></span><button class="btn soft" data-sh="${g.id}">Compartir con un curso</button><button class="btn soft" data-dl="${g.id}">⬇</button><button class="ib" data-del="${g.id}" title="Borrar">🗑</button></div>`).join('') : '<p class="note">Todavía no guardaste guías.</p>'}`;
   const rd = () => { GUIDE.title = $('#gd-t').value; GUIDE.cover = $('#gd-c').checked; };
   const rerender = () => { rd(); renderGuides(); };
   if($('#gd-add')) $('#gd-add').onclick = () => {
@@ -140,14 +152,16 @@ function renderGuides(){
   if($('#gd-clr')) $('#gd-clr').onclick = () => { if(confirm('¿Vaciar la guía en armado?')){ GUIDE.items = []; GUIDE.note = ''; rerender(); } };
   const run = async (save) => {
     rd(); if(!items.length) return;
-    const pr = $('#gd-prog'); pr.textContent = 'Armando el PDF…'; $('#gd-save').disabled = $('#gd-dl').disabled = true;
+    const pr = $('#gd-prog'); pr.textContent = 'Armando el PDF…'; const bs = [$('#gd-save'), $('#gd-view'), $('#gd-dl')].filter(Boolean); bs.forEach(x => x.disabled = true);
     try {
       const blob = await guideBuild(), title = (GUIDE.title || 'Guía').trim() || 'Guía';
+      if(save === 'view'){ pr.textContent = ''; bs.forEach(x => x.disabled = false); guidePreview(blob, title); return; }
       if(save){ pr.textContent = 'Guardando en la nube…'; await guideStore(blob, title, items.length); GUIDE.note = '✓ Guía guardada. Ahora podés compartirla con un curso desde “Mis guías”.'; GUIDE.list = null; GUIDE.items = []; renderGuides(); }
-      else { lbSave(blob, title.replace(/[\\/:*?"<>|]+/g, ' ') + '.pdf'); pr.textContent = ''; $('#gd-save').disabled = $('#gd-dl').disabled = false; }
-    } catch(e){ console.error(e); pr.textContent = '⚠ ' + (e.message || 'No se pudo armar la guía.'); $('#gd-save').disabled = $('#gd-dl').disabled = false; }
+      else { lbSave(blob, title.replace(/[\\/:*?"<>|]+/g, ' ') + '.pdf'); pr.textContent = ''; bs.forEach(x => x.disabled = false); }
+    } catch(e){ console.error(e); pr.textContent = '⚠ ' + (e.message || 'No se pudo armar la guía.'); bs.forEach(x => x.disabled = false); }
   };
-  $('#gd-save').onclick = () => run(true); $('#gd-dl').onclick = () => run(false);
+  if($('#gd-save')) $('#gd-save').onclick = () => run(true);
+  $('#gd-view').onclick = () => run('view'); $('#gd-dl').onclick = () => run(false);
   m.querySelectorAll('[data-sh]').forEach(b => b.onclick = () => guideShare(b.dataset.sh));
   m.querySelectorAll('[data-del]').forEach(b => b.onclick = () => guideDelete(b.dataset.del));
   m.querySelectorAll('[data-dl]').forEach(b => b.onclick = async () => { const g = GUIDE.list.find(x => x.id === b.dataset.dl); b.disabled = true; try { await downloadGuide(g.id, g.title); } catch(e){ alert('No se pudo descargar la guía.'); } b.disabled = false; });
