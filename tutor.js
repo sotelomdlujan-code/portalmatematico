@@ -7,7 +7,7 @@ const tutorSinTexto = t => !t || t.replace(/\s/g, '').length < 3;
 
 // ¿La pregunta nombra un documento de la biblioteca? (ej.: "resolvé el examen libre 2do borges noviembre 2025")
 // Se compara con el TÍTULO del documento, no con su contenido: un examen puede no repetir su propio título en las páginas.
-function tutorBookByName(pregunta) {
+function tutorBookByName(pregunta, max = 3) {
   const qn = lbNrm(pregunta).replace(/[^a-z0-9]+/g, ' ').trim(), qt = new Set(qn.split(' ').filter(Boolean));
   const generic = new Set(['pdf', 'libro', 'archivo', 'documento', 'pag', 'pags', 'pagina', 'paginas']);
   const found = [];
@@ -20,7 +20,22 @@ function tutorBookByName(pregunta) {
   }
   if (!found.length) return [];
   found.sort((x, y) => y.hit - x.hit || y.ratio - x.ratio);
-  return found.filter(f => f.hit === found[0].hit).slice(0, 3).map(f => f.b);     // hasta 3 si empatan (p. ej. un libro cortado en partes)
+  return found.filter(f => f.hit === found[0].hit).slice(0, max).map(f => f.b);     // si empatan (p. ej. un libro cortado en partes) se devuelven varios
+}
+
+// “página 11”, “páginas 11 y 12”, “págs. 11 a 13” → [11] / [11, 12] / [11, 12, 13]
+function tutorPageRequest(q) {
+  const m = lbNrm(q).match(/\b(?:paginas?|pags?|hojas?)\b\.?\s*(?:numero|nro|n)?\.?\s*(\d{1,4})(?:\s*(-|a|al|y|e|,)\s*(?:la\s+|las\s+)?(?:pagina\s+)?(\d{1,4}))?/);
+  if (!m) return [];
+  const a = +m[1], b = m[3] ? +m[3] : 0;
+  if (!b || a === b) return [a];
+  if (m[2] === 'y' || m[2] === 'e' || m[2] === ',') return [a, b];
+  return b > a && b - a < 6 ? Array.from({ length: b - a + 1 }, (_, i) => a + i) : [a];
+}
+// Los PDF grandes se cortan solos en partes llamadas “Libro (págs. 24-45)”: dentro de cada parte la página 1 es la primera de ESA parte.
+function tutorRange(b) {
+  const n = b.npages || (b.pages || []).length, m = lbNrm(b.title || '').match(/pags?\.?\s*(\d+)\s*[-–]\s*(\d+)/);
+  return m ? { a: +m[1], b: +m[2], n } : { a: 1, b: n, n };
 }
 
 function tutorContext(pregunta) {
@@ -30,6 +45,33 @@ function tutorContext(pregunta) {
   const palabras = (lbNrm(pregunta).match(/[a-z0-9]+/g) || [])
     .filter(w => w.length > 2 && !LB_STOP.has(w))
     .map(lbStem);
+
+  // A0) Pide una página puntual de un libro por nombre (“qué hay en la página 11 de Matemática activados 4”): se busca la parte que la contiene.
+  const pedidas = tutorPageRequest(pregunta).slice(0, 4);
+  if (pedidas.length) {
+    const cand = tutorBookByName(pregunta, 12);
+    if (cand.length) {
+      const partes = [], fuentes = [], paginas = [], faltan = [], sinTexto = [];
+      for (const N of pedidas) {
+        let got = 0;
+        for (const b of cand) {
+          const r = tutorRange(b), loc = N - r.a + 1;
+          if (got >= 3 || N < r.a || N > r.b || loc < 1 || loc > r.n) continue;
+          const t = (b.pages || [])[loc - 1] || '';
+          got++; paginas.push({ b: b.id, bt: b.title, p: loc, n: N }); fuentes.push(`${b.title} (pág. ${N})`);
+          if (tutorSinTexto(t)) sinTexto.push(N);
+          partes.push(`--- DOCUMENTO: "${b.title}" (página ${N} del libro; es la página ${loc} de este archivo) ---\n${tutorSinTexto(t) ? '(sin texto extraído: leé la imagen adjunta)' : t.slice(0, 6000)}`);
+        }
+        if (!got) faltan.push(N);
+      }
+      const cubre = [...new Set(cand.map(b => { const r = tutorRange(b); return `${b.title}: págs. ${r.a}-${r.b}`; }))].slice(0, 8).join('; ');
+      const aviso = `AVISO: el usuario pidió la página ${pedidas.join(', ')} del libro que nombró. Esos libros están cargados en partes (cada archivo cubre un tramo de páginas) y abajo va el texto de la página pedida, ya ubicada en la parte correcta. ` +
+        `El número es el de página del PDF original, que puede no coincidir con el número impreso en la hoja: si ves otro número impreso, aclaralo. ` +
+        `Si hay más de un documento con ese nombre (ediciones distintas), contá qué hay en cada uno por separado, indicando el título completo.` +
+        (faltan.length ? ` NO hay cargada ninguna parte que contenga la página ${faltan.join(', ')}: decíselo al usuario (las partes cargadas cubren: ${cubre}).` : '');
+      return { texto: partes.join('\n\n'), fuentes, libros, paginas: paginas.slice(0, 4), aviso, maxImgs: 4, forzarVision: sinTexto.length > 0 };
+    }
+  }
 
   // A) La pregunta nombra un documento: se le mandan sus páginas (todas si son pocas) en vez de buscar palabras sueltas en todos los libros.
   const named = tutorBookByName(pregunta);
@@ -238,8 +280,8 @@ TAREA: esto es un problema para resolver con el Teorema de Pitágoras (si el usu
   if ((TUTOR.vision || ctx.forzarVision) && !opts.draw && ctx.paginas && ctx.paginas.length) {
     const el = document.getElementById('tu-live'); if (el) el.textContent = '📖 Mirando las páginas de tus libros…';
     const vistas = await tutorPageImgs(ctx.paginas, ctx.maxImgs || 3);
-    vistas.forEach(v => pageParts.push({ text: `[Imagen de la página ${v.p} del libro "${v.bt}"]` }, { inline_data: { mime_type: v.mime, data: v.b64 } }));
-    live.vistas = vistas.map(v => `${v.bt} (pág. ${v.p})`);
+    vistas.forEach(v => pageParts.push({ text: `[Imagen de la página ${v.n || v.p} del libro "${v.bt}"]` }, { inline_data: { mime_type: v.mime, data: v.b64 } }));
+    live.vistas = vistas.map(v => `${v.bt} (pág. ${v.n || v.p})`);
     if (ctx.forzarVision && !vistas.length) pageParts.push({ text: 'AVISO: no se pudo obtener ninguna imagen del documento (puede que no tenga el PDF original guardado en la nube). Decile al usuario que no pudiste leerlo y que lo suba como foto o lo transcriba.' });
     if (el) el.textContent = '⏳ Pensando…';
   }
