@@ -87,7 +87,7 @@ async function lbTess(){
 }
 
 /* ---------- sincronización con Firestore ---------- */
-function libReset(){ LIB.loaded = false; LIB.loading = false; LIB.err = ''; LIB.books = []; LIB.pages = []; LIB.res = null; LIB.inc = null; LIB.pick = new Set(); LIB.shown = 0; lbWarmTok++; try { if(typeof LBV !== 'undefined'){ if(LBV.doc && LBV.doc.destroy) LBV.doc.destroy(); LBV.doc = null; LBV.id = ''; } } catch(e){} }
+function libReset(){ LIB.loaded = false; LIB.loading = false; LIB.err = ''; LIB.books = []; LIB.pages = []; LIB.res = null; LIB.inc = null; LIB.pick = new Set(); LIB.shown = 0; lbWarmTok++; try { if(typeof LBV !== 'undefined'){ if(LBV.doc && LBV.doc.destroy) LBV.doc.destroy(); LBV.doc = null; LBV.id = ''; LBV.tok++; LBV.loadingId = ''; } } catch(e){} }
 function lbIndex(){
   LIB.pages = [];
   LIB.books.forEach(b => (b.pages || []).forEach((t, i) => { if(t && t.replace(/\s/g, '').length >= 3) LIB.pages.push({b:b.id, bt:b.title, p:i + 1, t, get s(){ return this._s || (this._s = ' ' + lbStemText(this.t) + ' '); }}); }));
@@ -110,24 +110,28 @@ async function lbSync(msg){
   let local = []; try { local = await lbDB.all('books'); } catch(e){}
   const lm = {}; local.forEach(b => lm[b.id] = b);
   for(const b of local) if(!remote.some(r => r.id === b.id)){ try { await lbDB.del('books', b.id); await lbDB.del('files', b.id); } catch(e){} }
-  const books = [];
-  for(const r of remote){
-    let b = lm[r.id];
-    if(!b || b.updated !== r.updated){
-      msg && msg('Descargando “' + r.title + '”…');
-      const cs = await fs.collection('library').doc(r.id).collection('chunks').orderBy('i').get();
-      const pages = []; cs.docs.forEach(c => pages.push(...(c.data().texts || [])));
-      b = {id:r.id, updated:r.updated, pages};
-      try { await lbDB.put('books', b); } catch(e){}
+  const books = new Array(remote.length), need = remote.filter(r => !lm[r.id] || lm[r.id].updated !== r.updated).length;
+  let next = 0, got = 0;
+  const worker = async () => {                                         // se bajan hasta 3 libros a la vez (en el celular, uno por uno tardaba mucho)
+    while(next < remote.length){
+      const k = next++, r = remote[k]; let b = lm[r.id];
+      if(!b || b.updated !== r.updated){
+        const cs = await fs.collection('library').doc(r.id).collection('chunks').orderBy('i').get();
+        const pages = []; cs.docs.forEach(c => pages.push(...(c.data().texts || [])));
+        b = {id:r.id, updated:r.updated, pages};
+        try { await lbDB.put('books', b); } catch(e){}
+        got++; msg && msg('Descargando libros nuevos… ' + got + ' de ' + need);
+      }
+      books[k] = {...b, title:r.title, created:r.created, npages:r.npages, ocr:!!r.ocr, hasPdf:!!r.hasPdf, size:r.size||0, pdfChunks:r.pdfChunks||0};
     }
-    books.push({...b, title:r.title, created:r.created, npages:r.npages, ocr:!!r.ocr, hasPdf:!!r.hasPdf, size:r.size||0});
-  }
+  };
+  await Promise.all([worker(), worker(), worker()]);
   LIB.books = books; lbIndex();
 }
 async function libEnsure(){
   if(LIB.loaded || LIB.loading) return;
   LIB.loading = true; LIB.err = '';
-  try { await lbSync(m => { const e = document.getElementById('lb-msg'); if(e) e.textContent = m; }); LIB.loaded = true; }
+  try { await lbSync(m => { const e = document.getElementById('lb-msg'); if(e) e.textContent = m; }); LIB.loaded = true; setTimeout(() => { lbPdf().catch(() => {}); }, 1500); }
   catch(e){ console.error(e); LIB.err = lbRO() ? 'No se pudo abrir la biblioteca. Confirmá que tu correo esté habilitado por la profesora y que hayas confirmado tu cuenta.' : 'No se pudo cargar la biblioteca. Revisá tu conexión y que hayas publicado las reglas nuevas de Firestore (están en el archivo firestore.rules).'; }
   LIB.loading = false;
   if(typeof tab !== 'undefined' && tab === 'lib') renderLib();
@@ -152,12 +156,24 @@ async function lbStorePdf(id, blob, prog){
   const bk = LIB.books.find(x => x.id === id); if(bk){ bk.hasPdf = true; bk.size = buf.length; }
   try { await lbDB.put('files', blob, id); } catch(e){}
 }
-async function lbGetPdf(id){
+async function lbB64Part(t){                                          // decodificación nativa (mucho más rápida que letra por letra en el celular)
+  try { const r = await fetch('data:application/octet-stream;base64,' + t); return await r.blob(); }
+  catch(e){ return new Blob([lbUnb64(t)]); }
+}
+async function lbGetPdf(id, onProg){
   try { const f = await lbDB.get('files', id); if(f) return f; } catch(e){}
   const bk = LIB.books.find(x => x.id === id);
   if(!bk || !bk.hasPdf) return null;
-  const cs = await fs.collection('library').doc(id).collection('pdf').orderBy('i').get();
-  const blob = new Blob(cs.docs.map(d => lbUnb64(d.data().b64)), {type:'application/pdf'});
+  const col = fs.collection('library').doc(id).collection('pdf'), total = bk.pdfChunks || 0;
+  let parts = [];
+  if(total){                                                           // se conoce la cantidad de partes: se piden de a 4 en paralelo, con progreso
+    parts = new Array(total); let next = 0, got = 0;
+    const worker = async () => { while(next < total){ const k = next++; const d = await col.doc(String(k).padStart(4, '0')).get(); parts[k] = await lbB64Part(d.data().b64); got++; onProg && onProg(got / total); } };
+    await Promise.all([worker(), worker(), worker(), worker()]);
+  } else {
+    const cs = await col.orderBy('i').get(); for(const d of cs.docs) parts.push(await lbB64Part(d.data().b64));
+  }
+  const blob = new Blob(parts, {type:'application/pdf'});
   try { await lbDB.put('files', blob, id); } catch(e){}
   return blob;
 }
@@ -469,10 +485,12 @@ function renderLib(){
     lbShareRender();
     const ua = document.getElementById('lb-upall'); if(ua) ua.onclick = lbUploadAll;
   }
-  const go = () => {
+  const go = async () => {
     LIB.q.topic = document.getElementById('lb-topic').value; LIB.q.text = document.getElementById('lb-q').value;
     LIB.q.mode = (document.querySelector('input[name=lb-mode]:checked') || {}).value || 'all';
     if(!LIB.q.topic && !LIB.q.text.trim()){ alert('Elegí un tema o escribí lo que querés buscar.'); return; }
+    const out = document.getElementById('lb-out'); if(out) out.innerHTML = '<p class="note">Buscando…</p>';
+    await new Promise(r => setTimeout(r, 30));                          // deja que se dibuje “Buscando…” antes de la cuenta pesada
     LIB.res = lbRun(); LIB.pick = new Set(); LIB.shown = LB_PAGE; lbShow();
   };
   document.getElementById('lb-go').onclick = go;
@@ -592,38 +610,55 @@ async function lbDelete(id){
 }
 
 /* ---------- visor de páginas ---------- */
-const LBV = {id:'', p:1, doc:null, n:0};
+const LBV = {id:'', p:1, doc:null, n:0, tok:0, loadingId:''};
 async function lbViewer(id, p){
   const bk = LIB.books.find(x => x.id === id); if(!bk) return;
   let d = document.getElementById('lb-view');
   if(!d){
     d = document.createElement('dialog'); d.id = 'lb-view';
-    d.innerHTML = '<div class="lbv-bar"><b id="lbv-t"></b><span><button class="btn soft" id="lbv-p" aria-label="Página anterior">◀</button> <button class="btn soft" id="lbv-n" aria-label="Página siguiente">▶</button> <button class="btn" id="lbv-g">➕ A la guía</button> <button class="btn" id="lbv-x">Cerrar</button></span></div><div id="lbv-b"></div>';
+    d.innerHTML = '<div class="lbv-bar"><b id="lbv-t"></b><span><button class="btn soft" id="lbv-p" aria-label="Página anterior">◀</button> <button class="btn soft" id="lbv-n" aria-label="Página siguiente">▶</button> <button class="btn" id="lbv-g">➕ A la guía</button> <button class="btn" id="lbv-x">Cerrar</button></span></div><div id="lbv-s"></div><div id="lbv-b"></div>';
     document.body.appendChild(d);
     document.getElementById('lbv-x').onclick = () => d.close();
     document.getElementById('lbv-g').onclick = () => { guideAddMany([LBV.id + '|' + LBV.p]); const g = document.getElementById('lbv-g'); g.textContent = '✓ Agregada'; setTimeout(() => g.textContent = '➕ A la guía', 1200); };
     document.getElementById('lbv-p').onclick = () => lbPaint(LBV.p - 1);
     document.getElementById('lbv-n').onclick = () => lbPaint(LBV.p + 1);
   }
-  if(LBV.id !== id){ if(LBV.doc && LBV.doc.destroy){ try { LBV.doc.destroy(); } catch(e){} } LBV.id = id; LBV.doc = null; LBV.n = bk.npages || (bk.pages || []).length; }
-  if(!LBV.doc){
-    try { const f = await lbGetPdf(id); if(f){ const pdfjs = await lbPdf(); LBV.doc = await pdfjs.getDocument({data:new Uint8Array(await f.arrayBuffer())}).promise; } } catch(e){ console.warn(e); }
+  if(LBV.id !== id){ if(LBV.doc && LBV.doc.destroy){ try { LBV.doc.destroy(); } catch(e){} } LBV.id = id; LBV.doc = null; LBV.tok++; LBV.loadingId = ''; LBV.n = bk.npages || (bk.pages || []).length; }
+  d.showModal(); lbPaint(p);                                           // se abre YA, con el texto de la página, mientras baja el PDF original
+  if(!LBV.doc && LBV.loadingId !== id){
+    const tok = ++LBV.tok, st = document.getElementById('lbv-s'); LBV.loadingId = id;
+    const bar = f => { if(tok === LBV.tok && st) st.innerHTML = '<small>Descargando el PDF original… ' + (f == null ? '' : Math.round(f * 100) + '%') + '</small><div class="lbv-bar2"><i style="width:' + Math.round((f || 0.05) * 100) + '%"></i></div>'; };
+    bar(0.02);
+    try {
+      const f = await lbGetPdf(id, bar);
+      if(f){
+        if(tok === LBV.tok && st) st.innerHTML = '<small>Preparando la página…</small>';
+        const pdfjs = await lbPdf(), doc = await pdfjs.getDocument({data:new Uint8Array(await f.arrayBuffer())}).promise;
+        if(tok === LBV.tok) LBV.doc = doc; else { try { doc.destroy(); } catch(e){} }
+      }
+    } catch(e){ console.warn(e); }
+    if(tok === LBV.tok){ LBV.loadingId = ''; if(st) st.innerHTML = ''; lbPaint(LBV.p); }
   }
-  
-  d.showModal(); lbPaint(p);
 }
 async function lbPaint(p){
   const bk = LIB.books.find(x => x.id === LBV.id); if(!bk) return;
   p = Math.max(1, Math.min(LBV.n, p)); LBV.p = p;
   document.getElementById('lbv-t').textContent = bk.title + ' — página ' + p + ' de ' + LBV.n;
   const box = document.getElementById('lbv-b');
+  const asText = note => { box.innerHTML = '<p class="lb-nopdf">' + note + '</p><pre>' + esc((bk.pages || [])[p - 1] || '(página sin texto)') + '</pre>'; };
   if(LBV.doc){
-    box.innerHTML = '<canvas id="lbv-c"></canvas>';
-    const pg = await LBV.doc.getPage(p), vp = pg.getViewport({scale:1.5}), cv = document.getElementById('lbv-c');
-    if(!cv || LBV.p !== p) return;
-    cv.width = vp.width; cv.height = vp.height;
-    await pg.render({canvasContext:cv.getContext('2d'), canvas:cv, viewport:vp}).promise;
+    try {
+      box.innerHTML = '<canvas id="lbv-c"></canvas>';
+      const pg = await LBV.doc.getPage(p), v1 = pg.getViewport({scale:1}), cv = document.getElementById('lbv-c');
+      if(!cv || LBV.p !== p) return;
+      const want = Math.min(1400, (box.clientWidth || 360) * Math.min(window.devicePixelRatio || 1, 2));      // tamaño justo para la pantalla (en el celular, menos píxeles = más rápido)
+      const vp = pg.getViewport({scale:Math.max(0.5, Math.min(2.5, want / v1.width))});
+      cv.width = vp.width; cv.height = vp.height;
+      await pg.render({canvasContext:cv.getContext('2d'), canvas:cv, viewport:vp}).promise;
+    } catch(e){ console.warn(e); if(LBV.p === p) asText('No se pudo dibujar la página. Te muestro el texto guardado.'); }
+  } else if(LBV.loadingId === LBV.id){
+    asText('Mientras se descarga el PDF original, te muestro el texto de la página.');
   } else {
-    box.innerHTML = '<p class="lb-nopdf">Este documento no tiene el PDF original guardado en la nube. Te muestro el texto que quedó guardado.</p><pre>' + esc((bk.pages || [])[p - 1] || '(página sin texto)') + '</pre>';
+    asText(bk.hasPdf ? 'No se pudo cargar el PDF original. Te muestro el texto guardado.' : 'Este documento no tiene el PDF original guardado en la nube. Te muestro el texto que quedó guardado.');
   }
 }
