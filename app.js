@@ -116,6 +116,7 @@ function render(){
       fl.forEach(f => { h += `<a href="${esc(f.url)}" target="_blank" rel="noopener">📎 ${esc(f.name)}</a>`; });
       h += `</div>`;
     }
+    if(tab==='tasks' && window.AulaEntregas && (canEdit() || d.recibe)) h += `<div class="ent-host" data-task="${esc(d.id)}"></div>`;
     if(canEdit()) h += `<div class="acts">${d.ejercicios?`<button class="btn" data-g="${d.id}">Abrir examen</button>`:''}<button class="btn soft" data-e="${d.id}">Editar</button><button class="btn del" data-d="${d.id}">Borrar</button></div>`;
     h += `</div></details>`;
   });
@@ -124,6 +125,13 @@ function render(){
   document.querySelectorAll('#main details.item').forEach(el => { if(open.includes(el.dataset.id)) el.open = true; });
   document.querySelectorAll('[data-gd]').forEach(b => b.onclick = async () => { b.disabled = true; const t = b.textContent; b.textContent = 'Descargando…'; try { await downloadGuide(b.dataset.gd, b.dataset.gn); } catch(e){ console.error(e); alert('No se pudo descargar la guía. Probá de nuevo.'); } b.disabled = false; b.textContent = t; });
   document.querySelectorAll('[data-lf]').forEach(b => b.onclick = () => { if(window.AulaMateriales) AulaMateriales.openViewer(fs, b.dataset.lf, b.dataset.lfn); });
+  if(tab==='tasks' && window.AulaEntregas){
+    const cObj = canEdit() ? courses.find(x => x.id===courseId) : studentCourse;
+    document.querySelectorAll('.ent-host').forEach(host => {
+      const t = all.find(x => x.id===host.dataset.task); if(!t) return;
+      AulaEntregas.mount(host, {db: fs, courseId, task: t, canEdit: canEdit(), coursePin: String(cObj?.pin || '').trim(), pin: sessionStorage.getItem('aula_key_' + courseId) || ''});
+    });
+  }
   if(canEdit()){
     $('#add').onclick = () => openForm();
     document.querySelectorAll('[data-g]').forEach(b => b.onclick = () => openSavedExam(all.find(x => x.id===b.dataset.g)));
@@ -135,6 +143,7 @@ function render(){
         if(item && Array.isArray(item.localFiles) && window.AulaMateriales){
           for(const f of item.localFiles) await AulaMateriales.deleteLocalFile(fs, f.id);
         }
+        if(tab==='tasks' && window.AulaEntregas) await AulaEntregas.deleteForTask(fs, courseId, b.dataset.d);
         await col(tab).doc(b.dataset.d).delete();
       } catch(e){ alert('No se pudo borrar. Probá de nuevo.'); }
     });
@@ -160,6 +169,7 @@ function openForm(d){
   let h = `<h3>${d.id?'Editar':'Nueva'} · ${S.label.toLowerCase()}</h3>`;
   h += fld(S.fields[0]) + `<div class="row">${short.map(fld).join('')}</div>` + areas.map(fld).join('');
   const canUp = !!window.AulaMateriales;                       // si falta materiales.js, se vuelve al formulario con enlaces
+  if(tab==='tasks' && window.AulaEntregas) h += `<label class="chk" style="display:flex;gap:10px;align-items:flex-start;margin-top:14px;font-weight:600"><input type="checkbox" name="recibe" style="width:auto;margin-top:3px" ${d.id ? (d.recibe ? 'checked' : '') : 'checked'}> <span>Los alumnos pueden entregar esta tarea desde el aula (foto o archivo)</span></label>`;
   if(canUp) h += `<div id="pk-host"></div>`;
   h += `<details class="lb-more" ${links || !canUp ? 'open' : ''}><summary>🔗 ${canUp ? 'Agregar enlaces (opcional)' : 'Archivos y enlaces'}</summary><textarea name="__links" placeholder="Guía de ejercicios | https://drive.google.com/…">${esc(links)}</textarea>`;
   h += `<div class="note">Para un archivo que está en Google Drive (compartido con “cualquiera con el enlace”): pegá el enlace, uno por línea. Podés ponerle nombre así: <i>Nombre | enlace</i>.</div></details>`;
@@ -169,7 +179,7 @@ function openForm(d){
   const pk = canUp ? AulaMateriales.picker($('#pk-host'), {db: fs, user}, d.localFiles) : null;
   $('#sv').onclick = async () => {
     const obj = {updated: Date.now()};
-    $('#frm').querySelectorAll('[name]').forEach(el => { if(el.name!=='__links') obj[el.name] = el.value.trim(); });
+    $('#frm').querySelectorAll('[name]').forEach(el => { if(el.name!=='__links') obj[el.name] = el.type==='checkbox' ? el.checked : el.value.trim(); });
     obj.files = parseLinks($('#frm').querySelector('[name="__links"]').value);
     if(d.ejercicios) obj.ejercicios = d.ejercicios;
     if(d.guideId){ obj.guideId = d.guideId; obj.guideTitle = d.guideTitle || ''; }
@@ -320,6 +330,7 @@ async function delCourse(){
       }
       const b = fs.batch(); sn.docs.forEach(d => b.delete(d.ref)); if(sn.size) await b.commit();
     }
+    if(window.AulaEntregas) await AulaEntregas.deleteAll(fs, courseId);
     await ref.delete(); courseId = '';
   } catch(e){ console.error(e); alert('No se pudo borrar el curso.'); }
 }

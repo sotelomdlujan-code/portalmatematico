@@ -80,28 +80,36 @@
     return new Blob([arr], { type: mime });
   }
 
-  async function getFile(db, fileId, status){
-    let cached = null; try { cached = await idb.get(fileId); } catch(e){}
-    const ref = db.collection("archivos_aula").doc(fileId);
+  /* src = { key, getMeta(): meta|null, getChunks(): [{i,d}], format?: "b64" }
+     Sirve tanto para los archivos del aula como para las entregas de los alumnos (que guardan cada parte en base64 puro). */
+  async function getFileFrom(src, status){
+    let cached = null; try { cached = await idb.get(src.key); } catch(e){}
     let meta;
     try {
-      const snap = await ref.get();                                 // 1 sola lectura para saber si sigue existiendo
-      if(!snap.exists){ const g = new Error("El archivo ya no existe."); g.gone = true; throw g; }
-      meta = snap.data();
+      meta = await src.getMeta();                                   // los archivos del aula hacen 1 sola lectura para saber si sigue existiendo
+      if(!meta){ const g = new Error("El archivo ya no existe."); g.gone = true; throw g; }
     } catch(e){
-      if(e.gone){ try { await idb.del(fileId); } catch(x){} throw e; }
+      if(e.gone){ try { await idb.del(src.key); } catch(x){} throw e; }
       if(cached && cached.blob) return { meta: cached.meta || {}, blob: cached.blob, cached: true };   // sin conexión: se usa la copia guardada
       throw e;
     }
-    if(cached && cached.blob && cached.meta && cached.meta.createdAt === meta.createdAt){ cacheTouch(fileId); return { meta, blob: cached.blob, cached: true }; }
+    if(cached && cached.blob && cached.meta && cached.meta.createdAt === meta.createdAt){ cacheTouch(src.key); return { meta, blob: cached.blob, cached: true }; }
     status && status("Descargando el archivo…");
-    const cs = await ref.collection("chunks").get(), parts = new Array(meta.total);
-    let got = 0; cs.forEach(d => { const x = d.data(); if(parts[x.i] === undefined) got++; parts[x.i] = x.d; });
-    if(got < meta.total) throw new Error("El archivo está incompleto. Pedile a tu profesora que lo vuelva a subir.");
-    const blob = dataUrlToBlob(parts.join(""), meta.type);
-    try { await cachePut(fileId, { blob, meta }); } catch(e){}
+    const parts = new Array(meta.total); let got = 0;
+    for(const x of await src.getChunks()){ if(parts[x.i] === undefined) got++; parts[x.i] = x.d; }
+    if(got < meta.total) throw new Error("El archivo está incompleto. Pedile a quien lo subió que lo vuelva a subir.");
+    let blob;
+    if(src.format === "b64"){
+      blob = new Blob(parts.map(p => { const bin = atob(p), u = new Uint8Array(bin.length); for(let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return u; }), { type: meta.type || "application/octet-stream" });
+    } else blob = dataUrlToBlob(parts.join(""), meta.type);
+    try { await cachePut(src.key, { blob, meta }); } catch(e){}
     return { meta, blob };
   }
+  const getFile = (db, fileId, status) => getFileFrom({
+    key: fileId,
+    async getMeta(){ const sn = await db.collection("archivos_aula").doc(fileId).get(); return sn.exists ? sn.data() : null; },
+    async getChunks(){ const cs = await db.collection("archivos_aula").doc(fileId).collection("chunks").get(); const a = []; cs.forEach(d => a.push(d.data())); return a; }
+  }, status);
 
   async function deleteLocalFile(db, fileId){
     try{
@@ -213,7 +221,7 @@
       dlg.showModal();
     },
 
-    async openViewer(db, fileId, fileName){
+    async openViewer(db, fileId, fileName, src){
       fileName = String(fileName || "archivo");
       injectCss();
       const overlay = document.createElement("dialog");
@@ -252,7 +260,7 @@
       overlay.addEventListener("close", cleanup);
 
       try{
-        const { meta, blob } = await getFile(db, fileId, t => { const st = overlay.querySelector("#mv-st"); if(st) st.textContent = t; });
+        const { meta, blob } = await (src ? getFileFrom(src, t => { const st = overlay.querySelector("#mv-st"); if(st) st.textContent = t; }) : getFile(db, fileId, t => { const st = overlay.querySelector("#mv-st"); if(st) st.textContent = t; }));
         if(closed) return;
         blobUrl = URL.createObjectURL(blob);
         const dl = overlay.querySelector("#mv-dl");
