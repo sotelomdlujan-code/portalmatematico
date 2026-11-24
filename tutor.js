@@ -2,14 +2,61 @@
 const TUTOR = { history: (() => { try { return JSON.parse(sessionStorage.getItem('tutor_hist') || '[]'); } catch (e) { return []; } })(), key: localStorage.getItem('gemini_key') || '', busy: false, imgs: [], vision: localStorage.getItem('tutor_vision') === '1', docs: {} };
 
 // 1. Busca las páginas más relevantes en los libros ya cargados (LIB.pages)
+const TUTOR_BUDGET = 30000, TUTOR_PAGE = 3500;                  // cuánto texto de un documento nombrado se le manda a la IA (caracteres)
+const tutorSinTexto = t => !t || t.replace(/\s/g, '').length < 3;
+
+// ¿La pregunta nombra un documento de la biblioteca? (ej.: "resolvé el examen libre 2do borges noviembre 2025")
+// Se compara con el TÍTULO del documento, no con su contenido: un examen puede no repetir su propio título en las páginas.
+function tutorBookByName(pregunta) {
+  const qn = lbNrm(pregunta).replace(/[^a-z0-9]+/g, ' ').trim(), qt = new Set(qn.split(' ').filter(Boolean));
+  const generic = new Set(['pdf', 'libro', 'archivo', 'documento', 'pag', 'pags', 'pagina', 'paginas']);
+  const found = [];
+  for (const b of LIB.books) {
+    const tn = lbNrm(b.title || '').replace(/[^a-z0-9]+/g, ' ').trim(); if (!tn) continue;
+    const tt = [...new Set(tn.split(' ').filter(w => (w.length > 2 || /\d/.test(w)) && !LB_STOP.has(w) && !generic.has(w)))];
+    if (!tt.length) continue;
+    const hit = tt.filter(w => qt.has(w)).length, exact = tn.length > 5 && (' ' + qn + ' ').includes(' ' + tn + ' ');
+    if (exact || (hit >= 2 && (hit / tt.length >= 0.5 || hit >= 3))) found.push({ b, hit: exact ? 99 : hit, ratio: hit / tt.length });
+  }
+  if (!found.length) return [];
+  found.sort((x, y) => y.hit - x.hit || y.ratio - x.ratio);
+  return found.filter(f => f.hit === found[0].hit).slice(0, 3).map(f => f.b);     // hasta 3 si empatan (p. ej. un libro cortado en partes)
+}
+
 function tutorContext(pregunta) {
-  if (!LIB.loaded || !LIB.pages.length) return { texto: '', fuentes: [], libros: [] };
-  const libros = [...new Set(LIB.pages.map(pg => pg.bt).filter(Boolean))];
+  if (!LIB.loaded || !LIB.books.length) return { texto: '', fuentes: [], libros: [] };
+  // Lista de TODOS los documentos, también los escaneados (sin texto): antes los que no tenían texto ni aparecían.
+  const libros = LIB.books.map(b => (b.title || '') + ((b.pages || []).every(tutorSinTexto) ? ' (PDF escaneado: sin texto extraído)' : '')).filter(Boolean);
   const palabras = (lbNrm(pregunta).match(/[a-z0-9]+/g) || [])
     .filter(w => w.length > 2 && !LB_STOP.has(w))
     .map(lbStem);
-  if (!palabras.length) return { texto: '', fuentes: [], libros };
 
+  // A) La pregunta nombra un documento: se le mandan sus páginas (todas si son pocas) en vez de buscar palabras sueltas en todos los libros.
+  const named = tutorBookByName(pregunta);
+  if (named.length) {
+    const per = Math.floor(TUTOR_BUDGET / named.length), partes = [], fuentes = [], paginas = [], sinTexto = [];
+    for (const b of named) {
+      const all = (b.pages || []).map((t, i) => ({ p: i + 1, t: t || '' })), conTexto = all.filter(x => !tutorSinTexto(x.t));
+      if (!conTexto.length) { sinTexto.push(b.title); for (let i = 1; i <= Math.min(4, b.npages || all.length || 1); i++) paginas.push({ b: b.id, bt: b.title, p: i }); continue; }
+      let elegidas = conTexto;
+      if (conTexto.reduce((a, x) => a + Math.min(x.t.length, TUTOR_PAGE), 0) > per) {                 // documento largo: las primeras páginas + las que más coinciden con la pregunta
+        const tit = new Set(lbNrm(b.title).match(/[a-z0-9]+/g) || []);
+        const ws = [...new Set(palabras.filter(w => !tit.has(w)))], Q = { strong: ws, weak: [], mode: 'any' }, pick = new Map();
+        conTexto.slice(0, 2).forEach(x => pick.set(x.p, x));
+        if (ws.length) LIB.pages.filter(pg => pg.b === b.id).map(pg => ({ pg, sc: lbScore(pg, Q) })).filter(h => h.sc > 0).sort((x, y) => y.sc - x.sc).slice(0, 8).forEach(h => pick.set(h.pg.p, { p: h.pg.p, t: h.pg.t }));
+        let tot = 0; elegidas = [...pick.values()].sort((x, y) => x.p - y.p).filter(x => (tot += Math.min(x.t.length, TUTOR_PAGE)) <= per || tot - Math.min(x.t.length, TUTOR_PAGE) === 0);
+      }
+      elegidas.forEach(x => partes.push(`--- DOCUMENTO: "${b.title}" (Página ${x.p}) ---\n${x.t.slice(0, TUTOR_PAGE)}`));
+      elegidas.slice(0, 4).forEach(x => paginas.push({ b: b.id, bt: b.title, p: x.p }));
+      fuentes.push(`${b.title} (pág. ${elegidas[0].p}${elegidas.length > 1 ? '-' + elegidas[elegidas.length - 1].p : ''})`);
+    }
+    const aviso = `AVISO: el usuario se refiere al documento "${named.map(b => b.title).join('" / "')}", que SÍ está cargado en la biblioteca.` +
+      (sinTexto.length ? ` De "${sinTexto.join('", "')}" no hay texto extraído (es un PDF escaneado o de imágenes): leelo de las imágenes de las páginas que acompañan la consulta.` : '');
+    return { texto: partes.join('\n\n'), fuentes: fuentes.concat(sinTexto.map(t => t + ' (imágenes)')), libros, paginas: paginas.slice(0, 4), aviso, maxImgs: 4, forzarVision: sinTexto.length > 0 };
+  }
+
+  // B) Búsqueda normal por palabras en el contenido de los libros.
+  if (!palabras.length) return { texto: '', fuentes: [], libros };
   const Q = { strong: [...new Set(palabras)], weak: [], mode: 'any' };
   const hits = [];
   for (const pg of LIB.pages) {
@@ -167,7 +214,7 @@ REGLAS ESTRICTAS:
 
   const pq = pregunta || 'Analizá la imagen adjunta.';
   const nImg = imgs.length ? `AVISO: el usuario adjuntó ${imgs.length} imagen(es).\n\n` : '';
-  const promptFinal = nImg + (ctx.texto
+  const promptFinal = nImg + (ctx.aviso ? ctx.aviso + '\n\n' : '') + (ctx.texto
     ? `${listaLibros}FRAGMENTOS ENCONTRADOS EN LA BIBLIOTECA:\n${ctx.texto}\n\nPREGUNTA DEL USUARIO:\n${pq}`
     : `${listaLibros}AVISO: No se encontraron coincidencias directas en los PDF cargados.\n\nPREGUNTA DEL USUARIO:\n${pq}`);
 
@@ -188,11 +235,12 @@ TAREA: esto es un problema para resolver con el Teorema de Pitágoras (si el usu
   const showStatus = st => paint((shown(live.text) + '\n\n' + st).trim());
 
   const pageParts = [];
-  if (TUTOR.vision && !opts.draw && ctx.paginas && ctx.paginas.length) {
+  if ((TUTOR.vision || ctx.forzarVision) && !opts.draw && ctx.paginas && ctx.paginas.length) {
     const el = document.getElementById('tu-live'); if (el) el.textContent = '📖 Mirando las páginas de tus libros…';
-    const vistas = await tutorPageImgs(ctx.paginas);
+    const vistas = await tutorPageImgs(ctx.paginas, ctx.maxImgs || 3);
     vistas.forEach(v => pageParts.push({ text: `[Imagen de la página ${v.p} del libro "${v.bt}"]` }, { inline_data: { mime_type: v.mime, data: v.b64 } }));
     live.vistas = vistas.map(v => `${v.bt} (pág. ${v.p})`);
+    if (ctx.forzarVision && !vistas.length) pageParts.push({ text: 'AVISO: no se pudo obtener ninguna imagen del documento (puede que no tenga el PDF original guardado en la nube). Decile al usuario que no pudiste leerlo y que lo suba como foto o lo transcriba.' });
     if (el) el.textContent = '⏳ Pensando…';
   }
   const modelos = window.TUTOR_MODELS || TUTOR_MODELS_DEFAULT;   // se pueden cambiar en config.js
