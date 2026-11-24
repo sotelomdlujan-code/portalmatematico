@@ -37,6 +37,9 @@ const STANDALONE = ['gen','lib','guides','tutor','consultas'];
 const softRender = () => { if(!STANDALONE.includes(tab)) render(); };
 const GROUPS = {plans:'Mi planificación', lib:'Recursos', materials:'Para los alumnos'};
 
+const fileIco = f => { const k = String(f.type || '').toLowerCase() + ' ' + String(f.name || '').toLowerCase();
+  return /image\//.test(k) ? '🖼️' : /pdf/.test(k) ? '📕' : /word|\.docx?\b|\.odt\b/.test(k) ? '📝' : /sheet|excel|\.xlsx?\b|\.csv\b|\.ods\b/.test(k) ? '📊' : /presentation|powerpoint|\.pptx?\b|\.odp\b/.test(k) ? '📽️' : '📄'; };
+
 function parseLinks(text){
   return text.split('\n').map(l => l.trim()).filter(Boolean).map(l => {
     const i = l.indexOf('|');
@@ -99,7 +102,7 @@ function render(){
   if(!list.length) h += `<div class="empty">${typeof LAPI==='undefined'?'':LAPI}<div class="big">${S.empty}</div>${canEdit() ? 'Usá el botón de arriba para crear la primera.' : 'Cuando tu profesora publique algo, lo vas a ver acá.'}</div>`;
   list.forEach(d => {
     const dt = d.fecha || d.entrega;
-    h += `<details class="item k-${tab}"><summary><span class="badge dot">${S.ico}</span><div><h3>${esc(d.title||'Sin título')}</h3><div class="sub">`;
+    h += `<details class="item k-${tab}" data-id="${esc(d.id)}"><summary><span class="badge dot">${S.ico}</span><div><h3>${esc(d.title||'Sin título')}</h3><div class="sub">`;
     if(dt) h += `<span class="chip">${tab==='tasks'?'Entrega: ':''}${fmt(dt)}</span>`;
     if(d.tipo) h += `<span class="chip">${esc(d.tipo)}</span>`;
     h += `</div></div><span class="chev">⌄</span></summary><div class="body">`;
@@ -109,16 +112,16 @@ function render(){
     if(fl.length || lf.length || d.guideId) {
       h += `<div class="files">`;
       if(d.guideId) h += `<button class="gdl" data-gd="${d.guideId}" data-gn="${esc(d.guideTitle||d.title||'guia')}">📄 Descargar guía (PDF)</button>`;
-      lf.forEach(f => { h += `<button type="button" class="gdl" data-lf="${esc(f.id)}" data-lfn="${esc(f.name)}">📄 ${esc(f.name)}</button>`; });
+      lf.forEach(f => { h += `<button type="button" class="gdl" data-lf="${esc(f.id)}" data-lfn="${esc(f.name)}">${fileIco(f)} ${esc(f.name)}</button>`; });
       fl.forEach(f => { h += `<a href="${esc(f.url)}" target="_blank" rel="noopener">📎 ${esc(f.name)}</a>`; });
       h += `</div>`;
     }
     if(canEdit()) h += `<div class="acts">${d.ejercicios?`<button class="btn" data-g="${d.id}">Abrir examen</button>`:''}<button class="btn soft" data-e="${d.id}">Editar</button><button class="btn del" data-d="${d.id}">Borrar</button></div>`;
     h += `</div></details>`;
   });
-  const open = [...document.querySelectorAll('details[open] h3')].map(x => x.textContent);
+  const open = [...document.querySelectorAll('#main details.item[open]')].map(x => x.dataset.id);
   $('#main').innerHTML = h;
-  document.querySelectorAll('details').forEach(el => { if(open.includes(el.querySelector('h3').textContent)) el.open = true; });
+  document.querySelectorAll('#main details.item').forEach(el => { if(open.includes(el.dataset.id)) el.open = true; });
   document.querySelectorAll('[data-gd]').forEach(b => b.onclick = async () => { b.disabled = true; const t = b.textContent; b.textContent = 'Descargando…'; try { await downloadGuide(b.dataset.gd, b.dataset.gn); } catch(e){ console.error(e); alert('No se pudo descargar la guía. Probá de nuevo.'); } b.disabled = false; b.textContent = t; });
   document.querySelectorAll('[data-lf]').forEach(b => b.onclick = () => { if(window.AulaMateriales) AulaMateriales.openViewer(fs, b.dataset.lf, b.dataset.lfn); });
   if(canEdit()){
@@ -156,11 +159,14 @@ function openForm(d){
   const links = (d.files||[]).map(f => `${f.name} | ${f.url}`).join('\n');
   let h = `<h3>${d.id?'Editar':'Nueva'} · ${S.label.toLowerCase()}</h3>`;
   h += fld(S.fields[0]) + `<div class="row">${short.map(fld).join('')}</div>` + areas.map(fld).join('');
-  h += `<label>Archivos y enlaces</label><textarea name="__links" placeholder="Guía de ejercicios | https://drive.google.com/…">${esc(links)}</textarea>`;
-  h += `<div class="note">Subí el archivo a Google Drive (compartido con “cualquiera con el enlace”) y pegá el enlace acá, uno por línea. Podés ponerle nombre así: <i>Nombre | enlace</i>.</div>`;
+  const canUp = !!window.AulaMateriales;                       // si falta materiales.js, se vuelve al formulario con enlaces
+  if(canUp) h += `<div id="pk-host"></div>`;
+  h += `<details class="lb-more" ${links || !canUp ? 'open' : ''}><summary>🔗 ${canUp ? 'Agregar enlaces (opcional)' : 'Archivos y enlaces'}</summary><textarea name="__links" placeholder="Guía de ejercicios | https://drive.google.com/…">${esc(links)}</textarea>`;
+  h += `<div class="note">Para un archivo que está en Google Drive (compartido con “cualquiera con el enlace”): pegá el enlace, uno por línea. Podés ponerle nombre así: <i>Nombre | enlace</i>.</div></details>`;
   h += `<div class="acts" style="margin-top:22px"><button class="btn" id="sv">Guardar</button><button class="btn soft" id="cx">Cancelar</button></div>`;
   $('#frm').innerHTML = h;
   $('#cx').onclick = () => $('#dlg').close();
+  const pk = canUp ? AulaMateriales.picker($('#pk-host'), {db: fs, user}, d.localFiles) : null;
   $('#sv').onclick = async () => {
     const obj = {updated: Date.now()};
     $('#frm').querySelectorAll('[name]').forEach(el => { if(el.name!=='__links') obj[el.name] = el.value.trim(); });
@@ -168,11 +174,19 @@ function openForm(d){
     if(d.ejercicios) obj.ejercicios = d.ejercicios;
     if(d.guideId){ obj.guideId = d.guideId; obj.guideTitle = d.guideTitle || ''; }
     if(!obj.title){ alert('Escribí un título para guardar.'); return; }
+    const bad = pk ? pk.check() : ''; if(bad){ alert(bad); return; }
+    const btn = $('#sv'); btn.disabled = true;
     try {
+      if(pk) obj.localFiles = await pk.commit((i, n) => { btn.textContent = `Subiendo ${i} de ${n}…`; });
+      else if(Array.isArray(d.localFiles)) obj.localFiles = d.localFiles;
+      btn.textContent = 'Guardando…';
       const c = col(tab);
-      if(d.id) await c.doc(d.id).set({...obj, created: d.created||Date.now()}); else await c.add({...obj, created: Date.now()});
+      try {
+        if(d.id) await c.doc(d.id).set({...obj, created: d.created||Date.now()}); else await c.add({...obj, created: Date.now()});
+      } catch(e){ if(pk) await pk.rollback(); throw e; }
+      if(pk) await pk.finish();                                // los archivos quitados se borran recién cuando el guardado salió bien
       $('#dlg').close();
-    } catch(err){ alert('No se pudo guardar. Revisá tu conexión y las reglas de Firestore.'); }
+    } catch(err){ console.error(err); alert('No se pudo guardar. Revisá tu conexión y las reglas de Firestore.'); btn.disabled = false; btn.textContent = 'Guardar'; }
   };
   $('#dlg').showModal();
 }
@@ -301,7 +315,7 @@ async function delCourse(){
     const ref = fs.collection('courses').doc(courseId);
     for(const k of ['plans','exams','materials','tasks','consultas']){
       const sn = await ref.collection(k).get();
-      if(k==='materials' && window.AulaMateriales){
+      if(k!=='consultas' && window.AulaMateriales){
         for(const d of sn.docs){ const lf = d.data().localFiles; if(Array.isArray(lf)) for(const f of lf) await AulaMateriales.deleteLocalFile(fs, f.id); }
       }
       const b = fs.batch(); sn.docs.forEach(d => b.delete(d.ref)); if(sn.size) await b.commit();

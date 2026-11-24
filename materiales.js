@@ -4,6 +4,16 @@
 
   const esc = t => String(t ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 
+  const MIMES = {pdf:"application/pdf", doc:"application/msword", docx:"application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    xls:"application/vnd.ms-excel", xlsx:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", ppt:"application/vnd.ms-powerpoint",
+    pptx:"application/vnd.openxmlformats-officedocument.presentationml.presentation", odt:"application/vnd.oasis.opendocument.text",
+    ods:"application/vnd.oasis.opendocument.spreadsheet", odp:"application/vnd.oasis.opendocument.presentation", txt:"text/plain", csv:"text/csv",
+    png:"image/png", jpg:"image/jpeg", jpeg:"image/jpeg", gif:"image/gif", webp:"image/webp"};
+  const extOf = n => (String(n || "").split(".").pop() || "").toLowerCase();
+  const mimeOf = f => f.type || MIMES[extOf(f.name)] || "application/octet-stream";
+  const ACCEPT = ".pdf,application/pdf,image/*,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.odt,.ods,.odp,.txt,.csv";
+  const MAX_MB = 15;
+
   function readAsDataURL(file){
     return new Promise((res, rej) => {
       const r = new FileReader();
@@ -19,7 +29,7 @@
     const fileRef = db.collection("archivos_aula").doc();
     await fileRef.set({
       name: file.name,
-      type: file.type || "application/pdf",
+      type: mimeOf(file),
       size: file.size,
       total: total,
       owner: uid,
@@ -34,7 +44,7 @@
     return {
       id: fileRef.id,
       name: file.name,
-      type: file.type || "application/pdf",
+      type: mimeOf(file),
       size: file.size
     };
   }
@@ -62,9 +72,9 @@
     idxSave(o);
   }
 
-  function dataUrlToBlob(dataUrl){
+  function dataUrlToBlob(dataUrl, forceType){
     const [head, b64] = dataUrl.split(",");
-    const mime = (head.match(/:(.*?);/) || [])[1] || "application/pdf";
+    const mime = forceType || (head.match(/:(.*?);/) || [])[1] || "application/pdf";
     const bin = atob(b64), arr = new Uint8Array(bin.length);
     for(let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
     return new Blob([arr], { type: mime });
@@ -88,7 +98,7 @@
     const cs = await ref.collection("chunks").get(), parts = new Array(meta.total);
     let got = 0; cs.forEach(d => { const x = d.data(); if(parts[x.i] === undefined) got++; parts[x.i] = x.d; });
     if(got < meta.total) throw new Error("El archivo está incompleto. Pedile a tu profesora que lo vuelva a subir.");
-    const blob = dataUrlToBlob(parts.join(""));
+    const blob = dataUrlToBlob(parts.join(""), meta.type);
     try { await cachePut(fileId, { blob, meta }); } catch(e){}
     return { meta, blob };
   }
@@ -128,100 +138,78 @@
   }
 
   window.AulaMateriales = {
+    /* Selector de archivos para cualquier formulario (Material, Planificaciones, Evaluaciones, Tareas).
+       host: elemento donde se dibuja · ctx: { db, user } · items: archivos ya guardados del ítem que se edita.
+       check() valida · commit() sube y devuelve la lista final · finish() borra los quitados (después de guardar) · rollback() deshace lo subido si falló el guardado. */
+    picker(host, ctx, items){
+      const { db, user } = ctx;
+      const kept = Array.isArray(items) ? [...items] : [], removed = [], uploaded = [];
+      host.innerHTML = `
+        <label>Archivos <small style="font-weight:400;color:var(--mu)">(PDF, Word, Excel, PowerPoint o imágenes)</small></label>
+        <input class="mp-in" type="file" accept="${ACCEPT}" multiple>
+        <p class="note">Se guardan directamente en el aula, sin usar Google Drive. Máximo ${MAX_MB} MB por archivo.</p>
+        <div class="mp-kept" style="margin-top:6px"></div>`;
+      const input = host.querySelector(".mp-in"), box = host.querySelector(".mp-kept");
+      const draw = () => {
+        if(!kept.length){ box.innerHTML = ""; return; }
+        box.innerHTML = `<b style="font-size:.85rem">Archivos cargados:</b>` + kept.map((f, i) => `
+          <div class="share-row"><span>${typeof fileIco === "function" ? fileIco(f) : "📄"} ${esc(f.name)} <small>(${Math.max(1, Math.round((f.size || 0) / 1024))} KB)</small></span>
+          <button type="button" class="btn del" data-rm="${i}" style="padding:4px 10px;font-size:.8rem">Quitar</button></div>`).join("");
+        box.querySelectorAll("[data-rm]").forEach(bt => bt.onclick = () => { const r = kept.splice(+bt.dataset.rm, 1)[0]; if(r && r.id) removed.push(r.id); draw(); });
+      };
+      draw();
+      return {
+        check(){ for(const f of Array.from(input.files || [])) if(f.size > MAX_MB * 1024 * 1024) return `El archivo "${f.name}" supera los ${MAX_MB} MB.`; return ""; },
+        async commit(onProgress){
+          const files = Array.from(input.files || []);
+          try {
+            for(let i = 0; i < files.length; i++){ onProgress && onProgress(i + 1, files.length); uploaded.push(await saveLocalFile(db, user.uid, files[i])); }
+          } catch(e){ await this.rollback(); throw e; }
+          return [...kept, ...uploaded];
+        },
+        async finish(){ for(const id of removed) await deleteLocalFile(db, id); removed.length = 0; },
+        async rollback(){ for(const f of uploaded.splice(0)) await deleteLocalFile(db, f.id); }
+      };
+    },
+
     openEditor(ctx, existingItem){
       const { db, user, colRef, dlg, frm } = ctx;
       const it = existingItem || {};
-      const keptFiles = Array.isArray(it.localFiles) ? [...it.localFiles] : [];
-      const removedIds = [];
-
       frm.innerHTML = `
         <h3>${it.id ? "Editar" : "Nuevo"} · material</h3>
         <label>Título *</label>
         <input id="m-tit" required placeholder="Ej: Apunte de Ecuaciones + Guía práctica" value="${esc(it.title || "")}">
         <label>Descripción</label>
         <textarea id="m-desc" placeholder="Explicá qué contiene el archivo o qué páginas tienen que leer...">${esc(it.descripcion || "")}</textarea>
-
-        <label>Subir PDF o imágenes desde tu dispositivo</label>
-        <input id="m-files" type="file" accept=".pdf,application/pdf,image/*" multiple>
-        <p class="note">Se guardan directamente en el aula (sin usar Google Drive). Máximo 15 MB por archivo.</p>
-
-        <div id="m-kept" style="margin-top:10px"></div>
+        <div id="m-pick"></div>
         <div class="err" id="m-err"></div>
         <div class="acts" style="margin-top:18px">
           <button type="button" class="btn" id="m-save">Guardar</button>
           <button type="button" class="btn soft" id="m-cancel">Cancelar</button>
         </div>
       `;
-
-      const keptBox = frm.querySelector("#m-kept");
-      const renderKept = () => {
-        if(!keptFiles.length){ keptBox.innerHTML = ""; return; }
-        keptBox.innerHTML = `<b style="font-size:.85rem">Archivos cargados:</b>` + keptFiles.map((f, idx) => `
-          <div class="share-row">
-            <span>📄 ${esc(f.name)} <small>(${Math.round((f.size||0)/1024)} KB)</small></span>
-            <button type="button" class="btn del" data-rm="${idx}" style="padding:4px 10px;font-size:.8rem">Quitar</button>
-          </div>
-        `).join("");
-        keptBox.querySelectorAll("[data-rm]").forEach(b => {
-          b.onclick = () => {
-            const removed = keptFiles.splice(+b.dataset.rm, 1)[0];
-            if(removed && removed.id) removedIds.push(removed.id);
-            renderKept();
-          };
-        });
-      };
-      renderKept();
-
+      const pk = this.picker(frm.querySelector("#m-pick"), { db, user }, it.localFiles);
       frm.querySelector("#m-cancel").onclick = () => dlg.close();
       frm.querySelector("#m-save").onclick = async () => {
-        const title = frm.querySelector("#m-tit").value.trim();
-        const err = frm.querySelector("#m-err");
+        const title = frm.querySelector("#m-tit").value.trim(), err = frm.querySelector("#m-err"), btn = frm.querySelector("#m-save");
         if(!title){ err.textContent = "Escribí un título para guardar."; return; }
-
-        const inputFiles = Array.from(frm.querySelector("#m-files").files || []);
-        for(const f of inputFiles){
-          if(f.size > 15 * 1024 * 1024){
-            err.textContent = `El archivo "${f.name}" supera los 15 MB.`;
-            return;
-          }
-        }
-
-        const btn = frm.querySelector("#m-save");
-        btn.disabled = true;
-        err.textContent = "";
-
+        const bad = pk.check(); if(bad){ err.textContent = bad; return; }
+        btn.disabled = true; err.textContent = "";
         try{
-          const uploaded = [];
-          for(let i = 0; i < inputFiles.length; i++){
-            btn.textContent = `Subiendo ${i + 1} de ${inputFiles.length}…`;
-            const meta = await saveLocalFile(db, user.uid, inputFiles[i]);
-            uploaded.push(meta);
-          }
-          for(const oldId of removedIds) await deleteLocalFile(db, oldId);
-
+          const localFiles = await pk.commit((i, n) => { btn.textContent = `Subiendo ${i} de ${n}…`; });
           btn.textContent = "Guardando…";
-          const payload = {
-            title,
-            descripcion: frm.querySelector("#m-desc").value.trim(),
-            localFiles: [...keptFiles, ...uploaded],
-            files: Array.isArray(it.files) ? it.files : [],
-            updated: Date.now()
-          };
+          const payload = { title, descripcion: frm.querySelector("#m-desc").value.trim(), localFiles, files: Array.isArray(it.files) ? it.files : [], updated: Date.now() };
           if(it.guideId){ payload.guideId = it.guideId; payload.guideTitle = it.guideTitle || ""; }
-
-          if(it.id){
-            await colRef.doc(it.id).set({ ...payload, created: it.created || Date.now() });
-          }else{
-            await colRef.add({ ...payload, created: Date.now() });
-          }
+          try {
+            if(it.id) await colRef.doc(it.id).set({ ...payload, created: it.created || Date.now() }); else await colRef.add({ ...payload, created: Date.now() });
+          } catch(e){ await pk.rollback(); throw e; }
+          await pk.finish();                       // los archivos quitados se borran recién cuando el guardado salió bien
           dlg.close();
         }catch(e){
           err.textContent = "Error al guardar: " + (e.message || e);
-          btn.disabled = false;
-          btn.textContent = "Guardar";
+          btn.disabled = false; btn.textContent = "Guardar";
         }
       };
-
       dlg.showModal();
     },
 
@@ -270,8 +258,14 @@
         const dl = overlay.querySelector("#mv-dl");
         dl.href = blobUrl; dl.style.display = "inline-flex";
 
-        if((meta.type || blob.type || "").startsWith("image/")){
+        const type = String(meta.type || blob.type || "").toLowerCase();
+        if(type.startsWith("image/")){
           body.innerHTML = `<img class="mv-img" alt="${esc(fileName)}" src="${blobUrl}">`;
+          return;
+        }
+        if(type !== "application/pdf" && extOf(fileName) !== "pdf"){
+          overlay.querySelector("#mv-dl").style.display = "none";
+          body.innerHTML = `<div class="mv-msg"><div><p style="font-size:2.2rem;margin:0">📎</p><p><b>${esc(fileName)}</b></p><p class="note">Este tipo de archivo no se puede ver acá. Descargalo para abrirlo en tu dispositivo.</p><a class="btn" href="${blobUrl}" download="${esc(fileName)}" style="text-decoration:none">⬇ Descargar</a></div></div>`;
           return;
         }
 
