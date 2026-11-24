@@ -14,7 +14,7 @@ Todo es gratis: GitHub Pages aloja la página y Firebase guarda los datos.
 
 1. Entrá a [github.com](https://github.com) y creá una cuenta si no tenés.
 2. Tocá **New repository** (el botón verde). Nombre sugerido: `aula-matematica`. Dejalo **Public**.
-3. En el repositorio nuevo, elegí **uploading an existing file** y arrastrá todos los archivos de esta carpeta (`index.html`, `app.js`, `gen.js`, `biblioteca.js`, `guias.js`, `config.js`, `firestore.rules`, `.nojekyll` y este README). Tocá **Commit changes**.
+3. En el repositorio nuevo, elegí **uploading an existing file** y arrastrá todos los archivos de esta carpeta (`index.html`, `app.js`, `gen.js`, `gen2.js`, `gen3.js`, `biblioteca.js`, `guias.js`, `config.js`, `firestore.rules`, `.nojekyll` y este README). Tocá **Commit changes**.
 4. Andá a **Settings → Pages**. En *Branch* elegí `main` y la carpeta `/ (root)`. Guardá.
 5. En un minuto tu página va a estar en: `https://TU-USUARIO.github.io/aula-matematica/`
 
@@ -128,3 +128,17 @@ En el panel de la izquierda (al ingresar como docente) están los selectores **E
 **Me aparece “Falta conectar la base de datos”.** Revisá que pegaste bien los valores en `config.js`.
 
 **Me aparece “No se pudo guardar”.** Revisá que en `firestore.rules` pusiste exactamente el mismo correo con el que ingresás.
+
+## ✨ Generador: temas combinados y pedidos con tus palabras
+
+**Temas nuevos:** clasificación de figuras (triángulos y cuadriláteros, según lados y ángulos), ángulos complementarios, suplementarios y opuestos por el vértice, ángulos entre paralelas (correspondientes, alternos y conjugados), perímetro y área con ecuaciones, Teorema de Pitágoras con ecuaciones y ejercicios combinados (enteros, potencias, raíces y propiedad distributiva). Los de ángulos y figuras traen dibujo y la clave explica la relación usada.
+
+**Pedir el examen escribiendo:** arriba de todo, en “Pedile el examen con tus palabras”, escribí por ejemplo:
+
+> 3.º año, 6 ejercicios: 2 de Pitágoras con ecuaciones, 2 de ángulos entre paralelas y 2 combinados con potencias y raíces. Dificultad media, 10 puntos, con tema B.
+
+Entiende año, cantidad (total o por tema), temas, dificultad (fácil, media, difícil, progresiva), puntaje, “con tema B” y un título entre comillas. Para combinar temas usá “con”. Después de armarlo te cuenta qué entendió, y podés ajustar todo con los controles de abajo.
+
+**Desde tus libros:** si dejás tildado “Buscar también ejercicios en mis libros cargados”, busca en la Biblioteca páginas sobre esos temas y te muestra los ejercicios que encontró. Marcás los que quieras y se suman al examen (en la clave figura el libro y la página; esos ejercicios no se corrigen solos). Con “solo de mis libros” el examen se arma únicamente con ejercicios de los libros. Revisá siempre cómo se copiaron: las figuras y algunas fórmulas de los PDF pueden salir incompletas.
+
+**Al actualizar:** subí `gen.js`, `gen2.js` (nuevo), `gen3.js` (nuevo) e `index.html`, y recargá con Ctrl + F5.

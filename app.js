@@ -32,6 +32,9 @@ const TEACHER = String(window.TEACHER_EMAIL || '').toLowerCase();
 const canEdit = () => !!user && String(user.email || '').toLowerCase() === TEACHER;
 const isReader = () => !!user && !canEdit();
 const visible = () => Object.keys(SECTIONS).filter(k => canEdit() || (isReader() ? SECTIONS[k].reader : !SECTIONS[k].teacher));
+/* Pestañas con formulario o búsqueda propia: un cambio de datos en segundo plano no debe redibujarlas (se perdería lo escrito). */
+const STANDALONE = ['gen','lib','guides','tutor','consultas'];
+const softRender = () => { if(!STANDALONE.includes(tab)) render(); };
 const GROUPS = {plans:'Mi planificación', lib:'Recursos', materials:'Para los alumnos'};
 
 function parseLinks(text){
@@ -207,9 +210,9 @@ function subscribe(){
   unsubs.forEach(u => u()); unsubs = [];
   data = {plans:[],exams:[],materials:[],tasks:[]};
   if(courseId){
-    visible().filter(k => !['gen','lib','guides','tutor','consultas'].includes(k)).forEach(k => {
+    visible().filter(k => !STANDALONE.includes(k)).forEach(k => {
       unsubs.push(col(k).orderBy('created','desc').onSnapshot(
-        s => { data[k] = s.docs.map(x => ({id:x.id, ...x.data()})); render(); },
+        s => { data[k] = s.docs.map(x => ({id:x.id, ...x.data()})); softRender(); },
         err => { console.error(err); $('#role').textContent = 'No se pudieron cargar los datos'; }
       ));
     });
@@ -232,7 +235,7 @@ function syncSel(){
     subbed = courseId; saveSel();
     if(typeof G !== 'undefined'){ G.escuela = spaceName(); G.curso = courseName(); G.sets = null; }
     subscribe();
-  } else render();
+  } else softRender();
 }
 
 function askName(title, val, cb){
@@ -297,7 +300,11 @@ async function delCourse(){
   try {
     const ref = fs.collection('courses').doc(courseId);
     for(const k of ['plans','exams','materials','tasks','consultas']){
-      const sn = await ref.collection(k).get(); const b = fs.batch(); sn.docs.forEach(d => b.delete(d.ref)); if(sn.size) await b.commit();
+      const sn = await ref.collection(k).get();
+      if(k==='materials' && window.AulaMateriales){
+        for(const d of sn.docs){ const lf = d.data().localFiles; if(Array.isArray(lf)) for(const f of lf) await AulaMateriales.deleteLocalFile(fs, f.id); }
+      }
+      const b = fs.batch(); sn.docs.forEach(d => b.delete(d.ref)); if(sn.size) await b.commit();
     }
     await ref.delete(); courseId = '';
   } catch(e){ console.error(e); alert('No se pudo borrar el curso.'); }

@@ -2,6 +2,8 @@
 (function(){
   const CHUNK_SIZE = 700000;
 
+  const esc = t => String(t ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
   function readAsDataURL(file){
     return new Promise((res, rej) => {
       const r = new FileReader();
@@ -37,17 +39,58 @@
     };
   }
 
-  async function loadLocalFile(db, fileId){
-    const metaSnap = await db.collection("archivos_aula").doc(fileId).get();
-    if(!metaSnap.exists) throw new Error("El archivo ya no existe.");
-    const meta = metaSnap.data();
-    const chunksSnap = await db.collection("archivos_aula").doc(fileId).collection("chunks").get();
-    const parts = new Array(meta.total);
-    chunksSnap.forEach(doc => {
-      const data = doc.data();
-      parts[data.i] = data.d;
-    });
-    return { meta, dataUrl: parts.join("") };
+  /* ---------- Caché en el dispositivo (IndexedDB): el archivo se baja una sola vez ---------- */
+  const CACHE_MAX = 12, IDX_KEY = "aula_mat_idx";
+  const idb = (() => {
+    let p;
+    const open = () => p || (p = new Promise((ok, no) => {
+      const r = indexedDB.open("aula_materiales", 1);
+      r.onupgradeneeded = () => r.result.createObjectStore("files");
+      r.onsuccess = () => ok(r.result); r.onerror = () => no(r.error);
+    }));
+    const run = async (mode, fn) => { const d = await open(); return new Promise((ok, no) => { const t = d.transaction("files", mode), rq = fn(t.objectStore("files")); t.oncomplete = () => ok(rq && rq.result); t.onerror = () => no(t.error); t.onabort = () => no(t.error); }); };
+    return { get: k => run("readonly", o => o.get(k)), put: (k, v) => run("readwrite", o => o.put(v, k)), del: k => run("readwrite", o => o.delete(k)) };
+  })();
+  const idxLoad = () => { try { return JSON.parse(localStorage.getItem(IDX_KEY) || "{}"); } catch(e){ return {}; } };
+  const idxSave = o => { try { localStorage.setItem(IDX_KEY, JSON.stringify(o)); } catch(e){} };
+  async function cacheTouch(id){ const o = idxLoad(); o[id] = Date.now(); idxSave(o); }
+  async function cachePut(id, value){
+    await idb.put(id, value);
+    const o = idxLoad(); o[id] = Date.now();
+    const ids = Object.keys(o).sort((x, y) => o[y] - o[x]);        // se conservan los 12 más recientes
+    for(const old of ids.slice(CACHE_MAX)){ delete o[old]; try { await idb.del(old); } catch(e){} }
+    idxSave(o);
+  }
+
+  function dataUrlToBlob(dataUrl){
+    const [head, b64] = dataUrl.split(",");
+    const mime = (head.match(/:(.*?);/) || [])[1] || "application/pdf";
+    const bin = atob(b64), arr = new Uint8Array(bin.length);
+    for(let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+    return new Blob([arr], { type: mime });
+  }
+
+  async function getFile(db, fileId, status){
+    let cached = null; try { cached = await idb.get(fileId); } catch(e){}
+    const ref = db.collection("archivos_aula").doc(fileId);
+    let meta;
+    try {
+      const snap = await ref.get();                                 // 1 sola lectura para saber si sigue existiendo
+      if(!snap.exists){ const g = new Error("El archivo ya no existe."); g.gone = true; throw g; }
+      meta = snap.data();
+    } catch(e){
+      if(e.gone){ try { await idb.del(fileId); } catch(x){} throw e; }
+      if(cached && cached.blob) return { meta: cached.meta || {}, blob: cached.blob, cached: true };   // sin conexión: se usa la copia guardada
+      throw e;
+    }
+    if(cached && cached.blob && cached.meta && cached.meta.createdAt === meta.createdAt){ cacheTouch(fileId); return { meta, blob: cached.blob, cached: true }; }
+    status && status("Descargando el archivo…");
+    const cs = await ref.collection("chunks").get(), parts = new Array(meta.total);
+    let got = 0; cs.forEach(d => { const x = d.data(); if(parts[x.i] === undefined) got++; parts[x.i] = x.d; });
+    if(got < meta.total) throw new Error("El archivo está incompleto. Pedile a tu profesora que lo vuelva a subir.");
+    const blob = dataUrlToBlob(parts.join(""));
+    try { await cachePut(fileId, { blob, meta }); } catch(e){}
+    return { meta, blob };
   }
 
   async function deleteLocalFile(db, fileId){
@@ -60,18 +103,33 @@
     }catch(e){ console.warn("No se pudo limpiar archivo:", e); }
   }
 
-  function dataUrlToBlobUrl(dataUrl){
-    const [head, b64] = dataUrl.split(",");
-    const mime = (head.match(/:(.*?);/) || [])[1] || "application/pdf";
-    const bin = atob(b64);
-    const arr = new Uint8Array(bin.length);
-    for(let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
-    return URL.createObjectURL(new Blob([arr], { type: mime }));
+  let cssDone = false;
+  function injectCss(){
+    if(cssDone) return; cssDone = true;
+    const st = document.createElement("style");
+    st.textContent = `
+.mv-dlg{width:min(96vw,960px);height:90vh;max-height:90vh;padding:0;border:0;box-sizing:border-box;border-radius:18px;overflow:hidden}
+.mv-dlg[open]{display:flex;flex-direction:column}
+.mv-bar{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 12px;border-bottom:1.5px solid var(--bd);flex-wrap:wrap;background:var(--sf)}
+.mv-bar>b{flex:1 1 140px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mv-tools{display:flex;gap:6px;align-items:center}
+.mv-tools .btn{padding:8px 12px;min-height:40px;display:inline-flex;align-items:center;justify-content:center;line-height:1.2;align-self:center;height:40px;box-sizing:border-box}
+.mv-zt{display:inline-flex;gap:4px;align-items:center}.mv-zt[hidden]{display:none}
+.mv-zoom{min-width:46px;text-align:center;font-weight:700;font-size:.82rem;color:var(--mu)}
+.mv-body{flex:1;min-height:0;overflow:auto;background:var(--bd);-webkit-overflow-scrolling:touch}
+.mv-msg{display:grid;place-items:center;min-height:100%;padding:24px;text-align:center}
+.mv-pg{margin:8px auto;background:#fff;box-shadow:0 1px 6px rgba(0,0,0,.22);position:relative}
+.mv-pg canvas{display:block;width:100%;height:100%}
+.mv-pn{position:absolute;right:6px;bottom:4px;font-size:.7rem;background:rgba(0,0,0,.55);color:#fff;padding:1px 8px;border-radius:999px}
+.mv-img{display:block;max-width:100%;margin:10px auto;border-radius:10px;background:#fff}
+@media (max-width:760px){.mv-dlg{width:100vw;max-width:100vw;height:100dvh;max-height:100dvh;margin:0;border-radius:0}.mv-bar{padding:8px 10px}}
+`;
+    document.head.appendChild(st);
   }
 
   window.AulaMateriales = {
     openEditor(ctx, existingItem){
-      const { db, user, colRef, dlg, frm, esc } = ctx;
+      const { db, user, colRef, dlg, frm } = ctx;
       const it = existingItem || {};
       const keptFiles = Array.isArray(it.localFiles) ? [...it.localFiles] : [];
       const removedIds = [];
@@ -168,47 +226,112 @@
     },
 
     async openViewer(db, fileId, fileName){
+      fileName = String(fileName || "archivo");
+      injectCss();
       const overlay = document.createElement("dialog");
-      overlay.style.cssText = "width:min(96vw,960px);height:90vh;padding:14px;border-radius:18px";
+      overlay.className = "mv-dlg";
       overlay.innerHTML = `
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding-bottom:10px;border-bottom:1.5px solid var(--bd)">
-          <b style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">📄 ${fileName}</b>
-          <div style="display:flex;gap:8px">
-            <a id="mv-dl" class="btn soft" download="${fileName}" style="text-decoration:none;display:none">⬇ Descargar</a>
+        <div class="mv-bar">
+          <b title="${esc(fileName)}">📄 ${esc(fileName)}</b>
+          <div class="mv-tools">
+            <span class="mv-zt" hidden>
+              <button type="button" class="btn soft" id="mv-zo" aria-label="Alejar">－</button>
+              <span class="mv-zoom" id="mv-zl">100%</span>
+              <button type="button" class="btn soft" id="mv-zi" aria-label="Acercar">＋</button>
+            </span>
+            <a id="mv-dl" class="btn soft" download="${esc(fileName)}" style="text-decoration:none;display:none">⬇</a>
             <button type="button" class="btn del" id="mv-cl">Cerrar</button>
           </div>
         </div>
-        <div id="mv-body" style="height:calc(100% - 54px);display:grid;place-items:center;padding-top:10px">
-          <p>Cargando archivo…</p>
-        </div>
+        <div class="mv-body" id="mv-body"><div class="mv-msg"><p id="mv-st">Abriendo…</p></div></div>
       `;
       document.body.appendChild(overlay);
+      overlay.setAttribute("tabindex", "-1");
       overlay.showModal();
+      overlay.focus({ preventScroll: true });          // que no quede marcado el primer botón
 
-      let blobUrl = "";
-      const close = () => {
+      const body = overlay.querySelector("#mv-body");
+      let blobUrl = "", pdfDoc = null, io = null, onResize = null, closed = false;
+      const cleanup = () => {
+        if(closed) return; closed = true;
+        if(io) io.disconnect();
+        if(onResize) window.removeEventListener("resize", onResize);
+        if(pdfDoc && pdfDoc.destroy) { try { pdfDoc.destroy(); } catch(e){} }
         if(blobUrl) URL.revokeObjectURL(blobUrl);
-        overlay.close();
         overlay.remove();
       };
-      overlay.querySelector("#mv-cl").onclick = close;
-      overlay.addEventListener("close", () => { if(blobUrl) URL.revokeObjectURL(blobUrl); overlay.remove(); });
+      overlay.querySelector("#mv-cl").onclick = () => { overlay.close(); };
+      overlay.addEventListener("close", cleanup);
 
       try{
-        const { meta, dataUrl } = await loadLocalFile(db, fileId);
-        blobUrl = dataUrlToBlobUrl(dataUrl);
+        const { meta, blob } = await getFile(db, fileId, t => { const st = overlay.querySelector("#mv-st"); if(st) st.textContent = t; });
+        if(closed) return;
+        blobUrl = URL.createObjectURL(blob);
         const dl = overlay.querySelector("#mv-dl");
-        dl.href = blobUrl;
-        dl.style.display = "inline-flex";
+        dl.href = blobUrl; dl.style.display = "inline-flex";
 
-        const body = overlay.querySelector("#mv-body");
-        if((meta.type || "").startsWith("image/")){
-          body.innerHTML = `<img src="${blobUrl}" style="max-width:100%;max-height:100%;object-fit:contain;border-radius:10px">`;
-        }else{
-          body.innerHTML = `<iframe src="${blobUrl}" style="width:100%;height:100%;border:0;border-radius:10px;background:#fff"></iframe>`;
+        if((meta.type || blob.type || "").startsWith("image/")){
+          body.innerHTML = `<img class="mv-img" alt="${esc(fileName)}" src="${blobUrl}">`;
+          return;
         }
+
+        // PDF: se dibuja página por página (funciona en iPhone y Android, donde el visor integrado no sirve)
+        let pdfjs;
+        try { pdfjs = typeof lbPdf === "function" ? await lbPdf() : window.pdfjsLib; if(!pdfjs) throw new Error("sin visor"); }
+        catch(e){ console.warn(e); body.innerHTML = `<iframe src="${blobUrl}" style="width:100%;height:100%;border:0;background:#fff"></iframe>`; return; }
+        pdfDoc = await pdfjs.getDocument({ data: new Uint8Array(await blob.arrayBuffer()) }).promise;
+        if(closed) return;
+
+        const N = pdfDoc.numPages, ZOOMS = [1, 1.5, 2, 3];
+        let zi = 0, ratio = 1.414;
+        body.innerHTML = "";
+        const first = await pdfDoc.getPage(1), v1 = first.getViewport({ scale: 1 }); ratio = v1.height / v1.width;
+        const baseW = () => Math.max(200, Math.min(body.clientWidth - 16, 900));
+        const curW = () => Math.round(baseW() * ZOOMS[zi]);
+        const pages = [];
+        for(let i = 0; i < N; i++){
+          const el = document.createElement("div"); el.className = "mv-pg"; el.dataset.i = i;
+          const st = { el, gen: 0, done: false, busy: false, ratio };
+          pages.push(st); body.appendChild(el);
+        }
+        const size = st => { const W = curW(); st.el.style.width = W + "px"; st.el.style.height = Math.round(W * st.ratio) + "px"; };
+        const release = st => { st.gen++; st.done = false; st.busy = false; st.el.replaceChildren(); };
+        async function draw(i){
+          const st = pages[i]; if(st.done || st.busy) return;
+          st.busy = true; const my = ++st.gen;
+          try{
+            const pg = await pdfDoc.getPage(i + 1), vp0 = pg.getViewport({ scale: 1 }), W = curW();
+            st.ratio = vp0.height / vp0.width; size(st);
+            let sc = (W / vp0.width) * Math.min(window.devicePixelRatio || 1, 2);
+            sc = Math.min(sc, Math.sqrt(12e6 / (vp0.width * vp0.height)));          // tope de memoria en celulares
+            const vp = pg.getViewport({ scale: sc }), cv = document.createElement("canvas");
+            cv.width = Math.floor(vp.width); cv.height = Math.floor(vp.height);
+            await pg.render({ canvasContext: cv.getContext("2d"), canvas: cv, viewport: vp }).promise;
+            if(closed || st.gen !== my) return;
+            const tag = document.createElement("span"); tag.className = "mv-pn"; tag.textContent = (i + 1) + " / " + N;
+            st.el.replaceChildren(cv, tag); st.done = true;
+          } catch(e){ if(!closed && st.gen === my) console.warn("página " + (i + 1), e); }
+          if(st.gen === my) st.busy = false;
+        }
+        io = new IntersectionObserver(es => es.forEach(e => { const i = +e.target.dataset.i; e.isIntersecting ? draw(i) : release(pages[i]); }), { root: body, rootMargin: "900px 0px" });
+        const relayout = () => {
+          const frac = body.scrollHeight ? (body.scrollTop + body.clientHeight / 2) / body.scrollHeight : 0;
+          pages.forEach(st => { release(st); size(st); io.unobserve(st.el); });
+          body.scrollTop = frac * body.scrollHeight - body.clientHeight / 2;
+          pages.forEach(st => io.observe(st.el));
+          overlay.querySelector("#mv-zl").textContent = Math.round(ZOOMS[zi] * 100) + "%";
+        };
+        pages.forEach(st => { size(st); });
+        pages.forEach(st => io.observe(st.el));
+        overlay.querySelector(".mv-zt").hidden = false;
+        overlay.querySelector("#mv-zi").onclick = () => { if(zi < ZOOMS.length - 1){ zi++; relayout(); } };
+        overlay.querySelector("#mv-zo").onclick = () => { if(zi > 0){ zi--; relayout(); } };
+        let lastW = body.clientWidth, tmr;
+        onResize = () => { clearTimeout(tmr); tmr = setTimeout(() => { if(Math.abs(body.clientWidth - lastW) > 4){ lastW = body.clientWidth; relayout(); } }, 250); };
+        window.addEventListener("resize", onResize);
       }catch(e){
-        overlay.querySelector("#mv-body").innerHTML = `<p class="err">No se pudo abrir el archivo: ${e.message}</p>`;
+        console.warn(e);
+        if(!closed) body.innerHTML = `<div class="mv-msg"><p class="err">No se pudo abrir el archivo: ${esc(e.message)}</p></div>`;
       }
     },
 

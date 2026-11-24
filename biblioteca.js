@@ -87,13 +87,22 @@ async function lbTess(){
 }
 
 /* ---------- sincronización con Firestore ---------- */
-function libReset(){ LIB.loaded = false; LIB.loading = false; LIB.err = ''; LIB.books = []; LIB.pages = []; LIB.res = null; LIB.inc = null; LIB.pick = new Set(); }
+function libReset(){ LIB.loaded = false; LIB.loading = false; LIB.err = ''; LIB.books = []; LIB.pages = []; LIB.res = null; LIB.inc = null; LIB.pick = new Set(); LIB.shown = 0; lbWarmTok++; try { if(typeof LBV !== 'undefined'){ if(LBV.doc && LBV.doc.destroy) LBV.doc.destroy(); LBV.doc = null; LBV.id = ''; } } catch(e){} }
 function lbIndex(){
   LIB.pages = [];
-  LIB.books.forEach(b => (b.pages || []).forEach((t, i) => { if(t && t.replace(/\s/g, '').length >= 3) LIB.pages.push({b:b.id, bt:b.title, p:i + 1, t, s:' ' + lbStemText(t) + ' '}); }));
+  LIB.books.forEach(b => (b.pages || []).forEach((t, i) => { if(t && t.replace(/\s/g, '').length >= 3) LIB.pages.push({b:b.id, bt:b.title, p:i + 1, t, get s(){ return this._s || (this._s = ' ' + lbStemText(this.t) + ' '); }}); }));
   if(!LIB.inc) LIB.inc = new Set(LIB.books.map(b => b.id));
   else LIB.books.forEach(b => { if(!LIB.seen || !LIB.seen.has(b.id)) LIB.inc.add(b.id); });
   LIB.seen = new Set(LIB.books.map(b => b.id));
+  lbWarm();
+}
+/* El texto de cada página se procesa de a tandas de ~12 ms mientras la pantalla está libre: abrir la biblioteca no se traba aunque tenga miles de páginas.
+   Si se busca antes de que termine, cada página pendiente se procesa en el momento (el resultado es el mismo). */
+let lbWarmTok = 0;
+function lbWarm(){
+  const tok = ++lbWarmTok, pages = LIB.pages; let i = 0;
+  const step = () => { if(tok !== lbWarmTok) return; const t0 = performance.now(); while(i < pages.length && performance.now() - t0 < 12) pages[i++].s; if(i < pages.length) setTimeout(step, 0); };
+  setTimeout(step, 0);
 }
 async function lbSync(msg){
   const snap = await fs.collection('library').orderBy('created', 'desc').get();
@@ -418,7 +427,7 @@ function lbDdLabel(){
   const n = LIB.books.length, k = LIB.books.filter(b => LIB.inc.has(b.id)).length;
   if(k === n) return 'Todos los libros (' + n + ')';
   if(k === 0) return 'Ningún libro seleccionado';
-  if(k === 1) return esc(LIB.books.find(b => LIB.inc.has(b.id)).title);
+  if(k === 1) return LIB.books.find(b => LIB.inc.has(b.id)).title;
   return k + ' de ' + n + ' libros';
 }
 const lbHead = () => `<div class="top"><h2>Biblioteca</h2><div class="tools">${lbRO() ? '' : '<button class="btn" id="lb-add">Agregar PDF</button><input type="file" id="lb-file" accept="application/pdf,.pdf" multiple hidden>'}</div></div><p class="lead">${lbRO() ? 'Buscá por tema y descargá los PDF que necesites.' : 'Cargá tus PDF y libros y buscá por tema. Podés armar guías con las páginas que elijas.'}</p>`;
@@ -434,7 +443,7 @@ function renderLib(){
   m.innerHTML = lbHead() + `<div id="lb-prog"></div>${LIB.note ? `<div class="lb-note">${esc(LIB.note).replace(/\n/g, '<br>')}</div>` : ''}
   <div class="gd-box lb-sbox lib-ui"><div class="lb-row"><div class="lb-f"><label for="lb-topic">Tema</label><select id="lb-topic"><option value="">— Elegí un tema —</option>${topics.map(t => `<option value="${t.k}" ${LIB.q.topic === t.k ? 'selected' : ''}>${esc(t.n)}</option>`).join('')}</select></div>
     <div class="lb-f"><label for="lb-q">o escribí lo que buscás</label><input id="lb-q" value="${esc(LIB.q.text)}" placeholder='Ej.: teorema de Pitágoras' autocomplete="off"></div></div>
-    ${LIB.books.length > 1 ? `<div class="lb-f lb-ddwrap"><label>Buscar en</label><details class="lb-dd" id="lb-dd"><summary id="lb-dd-s">${lbDdLabel()}</summary>
+    ${LIB.books.length > 1 ? `<div class="lb-f lb-ddwrap"><label>Buscar en</label><details class="lb-dd" id="lb-dd"><summary id="lb-dd-s">${esc(lbDdLabel())}</summary>
       <div class="lb-dd-p"><input type="search" id="lb-dd-f" class="lb-dd-f" placeholder="Filtrar libros…" autocomplete="off">
         <div class="lb-dd-a"><button type="button" class="btn soft" id="lb-dd-all">Todos</button><button type="button" class="btn soft" id="lb-dd-none">Ninguno</button><button type="button" class="btn" id="lb-dd-ok">Listo</button></div>
         <div class="lb-dd-l" id="lb-dd-l">${LIB.books.map(b => `<label class="lb-dd-i" data-t="${esc(lbNrm(b.title))}"><input type="checkbox" class="lb-bk" value="${b.id}" ${LIB.inc.has(b.id) ? 'checked' : ''}><span>${esc(b.title)}</span></label>`).join('')}</div></div></details></div>` : ''}
@@ -464,7 +473,7 @@ function renderLib(){
     LIB.q.topic = document.getElementById('lb-topic').value; LIB.q.text = document.getElementById('lb-q').value;
     LIB.q.mode = (document.querySelector('input[name=lb-mode]:checked') || {}).value || 'all';
     if(!LIB.q.topic && !LIB.q.text.trim()){ alert('Elegí un tema o escribí lo que querés buscar.'); return; }
-    LIB.res = lbRun(); LIB.pick = new Set(); lbShow();
+    LIB.res = lbRun(); LIB.pick = new Set(); LIB.shown = LB_PAGE; lbShow();
   };
   document.getElementById('lb-go').onclick = go;
   document.getElementById('lb-q').onkeydown = e => { if(e.key === 'Enter') go(); };
@@ -503,24 +512,62 @@ async function lbShareRender(){
   };
   box.querySelectorAll('[data-rm]').forEach(b => b.onclick = async () => { if(!confirm('¿Quitar el acceso a ' + emails[+b.dataset.rm] + '?')) return; try { await save(emails.filter((_, i) => i !== +b.dataset.rm)); } catch(e){ alert('No se pudo guardar.'); } });
 }
+/* ---------- resultados: de a LB_PAGE, se cargan más al bajar; tildar una página no redibuja nada ---------- */
+const LB_PAGE = 30;
+let lbIO = null;
+function lbPickLabels(){
+  const n = LIB.pick.size, g = document.getElementById('lb-gd'), p = document.getElementById('lb-prt'), a = document.getElementById('lb-all');
+  if(g) g.textContent = '➕ A la guía ' + (n ? '(' + n + ')' : '(todo)');
+  if(p) p.textContent = '🖨️ Imprimir ' + (n ? 'la selección (' + n + ')' : 'todo lo encontrado');
+  if(a) a.textContent = n ? 'Quitar selección' : 'Seleccionar todo';
+}
+function lbCard(g, h, R){
+  const key = g.id + '|' + h.pg.p;
+  if(h.html === undefined) h.html = lbSnip(h.pg.t, R.stems);          // el fragmento se calcula una sola vez
+  return `<article class="lb-res"><label class="lb-pg"><input type="checkbox" class="lb-pick" value="${key}" ${LIB.pick.has(key) ? 'checked' : ''}> <b>Página ${h.pg.p}</b></label><div class="lb-snip">${h.html}</div><div class="lb-act">${lbRO() ? '' : `<button class="btn" data-ga="${key}">➕ A la guía</button> `}<button class="btn soft" data-v="${key}">📄 Ver la página</button> <button class="btn soft" data-t="${key}">Ver texto</button></div><div class="lb-full" hidden></div></article>`;
+}
+function lbMore(upTo){
+  const R = LIB.res, list = document.getElementById('lb-list'), more = document.getElementById('lb-more'); if(!R || !list) return;
+  if(lbIO){ lbIO.disconnect(); lbIO = null; }
+  const end = Math.min(R.flat.length, upTo); let cur = list.lastElementChild;
+  for(; R.drawn < end; R.drawn++){
+    const {g, h} = R.flat[R.drawn];
+    if(!cur || cur.dataset.g !== g.id){ list.insertAdjacentHTML('beforeend', `<section class="lb-g" data-g="${g.id}"><h3 class="lb-bt">📖 ${esc(g.title)} <small>${g.items.length} página(s)</small></h3></section>`); cur = list.lastElementChild; }
+    cur.insertAdjacentHTML('beforeend', lbCard(g, h, R));
+  }
+  LIB.shown = R.drawn;
+  const left = R.flat.length - R.drawn;
+  more.innerHTML = left > 0 ? `<button class="btn soft" id="lb-moreb">Mostrar ${Math.min(LB_PAGE, left)} más (quedan ${left})</button>` : '';
+  const mb = document.getElementById('lb-moreb');
+  if(mb && 'IntersectionObserver' in window){ lbIO = new IntersectionObserver(es => { if(es.some(e => e.isIntersecting)) lbMore(R.drawn + LB_PAGE); }, {rootMargin:'700px 0px'}); lbIO.observe(mb); }
+}
 function lbShow(){
-  const out = document.getElementById('lb-out'), R = LIB.res; if(!out) return;
+  const out = document.getElementById('lb-out'), R = LIB.res;
+  if(lbIO){ lbIO.disconnect(); lbIO = null; }
+  if(!out) return;
   if(!R){ out.innerHTML = ''; return; }
   if(!R.total){ out.innerHTML = `<div class="empty"><div class="big">No encontré nada sobre “${esc(R.Q.label)}”</div>En ${R.docs} documento(s) que cargaste no aparece ese tema. Probá con otras palabras, o revisá que el documento tenga texto legible.</div>`; return; }
+  if(!R.flat) R.flat = R.groups.flatMap(g => g.items.map(h => ({g, h})));
+  R.drawn = 0;
   out.innerHTML = `<div class="lb-sum"><span class="lb-st"><b>${R.total}</b> página(s) sobre “${esc(R.Q.label)}” en <b>${R.groups.length}</b> de tus ${R.docs} documento(s).${R.total > R.shown ? ` Te muestro las ${R.shown} más relevantes.` : ''}</span>
-    <span class="lb-print lb-bar2">${lbRO() ? '' : `<button class="btn" id="lb-gd">➕ A la guía ${LIB.pick.size ? '(' + LIB.pick.size + ')' : '(todo)'}</button> `}<button class="btn soft" id="lb-prt">🖨️ Imprimir ${LIB.pick.size ? 'la selección (' + LIB.pick.size + ')' : 'todo lo encontrado'}</button> <button class="btn soft" id="lb-all">${LIB.pick.size ? 'Quitar selección' : 'Seleccionar todo'}</button></span></div>` +
-    R.groups.map(g => `<section class="lb-g"><h3 class="lb-bt">📖 ${esc(g.title)} <small>${g.items.length} página(s)</small></h3>${g.items.map(h => { const key = g.id + '|' + h.pg.p; return `<article class="lb-res"><label class="lb-pg"><input type="checkbox" class="lb-pick" value="${key}" ${LIB.pick.has(key) ? 'checked' : ''}> <b>Página ${h.pg.p}</b></label><div class="lb-snip">${lbSnip(h.pg.t, R.stems)}</div><div class="lb-act">${lbRO() ? '' : `<button class="btn" data-ga="${key}">➕ A la guía</button> `}<button class="btn soft" data-v="${g.id}|${h.pg.p}">📄 Ver la página</button> <button class="btn soft" data-t="${key}">Ver texto</button></div><div class="lb-full" hidden></div></article>`; }).join('')}</section>`).join('');
-  out.querySelectorAll('.lb-pick').forEach(c => c.onchange = () => { c.checked ? LIB.pick.add(c.value) : LIB.pick.delete(c.value); lbShow(); });
-  document.getElementById('lb-all').onclick = () => { if(LIB.pick.size) LIB.pick = new Set(); else R.groups.forEach(g => g.items.forEach(h => LIB.pick.add(g.id + '|' + h.pg.p))); lbShow(); };
-  document.getElementById('lb-prt').onclick = lbPrint;
-  const gdb = document.getElementById('lb-gd');
-  if(gdb) gdb.onclick = () => { const keys = []; R.groups.forEach(g => g.items.forEach(h => { const k = g.id + '|' + h.pg.p; if(!LIB.pick.size || LIB.pick.has(k)) keys.push(k); })); guideAddMany(keys); };
-  out.querySelectorAll('[data-ga]').forEach(b => b.onclick = () => { guideAddMany([b.dataset.ga]); b.textContent = '✓ Agregada'; b.disabled = true; });
-  out.querySelectorAll('[data-v]').forEach(b => b.onclick = () => { const [id, p] = b.dataset.v.split('|'); lbViewer(id, +p); });
-  out.querySelectorAll('[data-t]').forEach(b => b.onclick = () => {
-    const box = b.closest('.lb-res').querySelector('.lb-full'), [id, p] = b.dataset.t.split('|'), pg = LIB.pages.find(x => x.b === id && x.p === +p);
-    if(box.hidden){ box.innerHTML = '<pre>' + lbMark(pg.t, R.stems) + '</pre>'; box.hidden = false; b.textContent = 'Ocultar texto'; } else { box.hidden = true; b.textContent = 'Ver texto'; }
-  });
+    <span class="lb-print lb-bar2">${lbRO() ? '' : '<button class="btn" id="lb-gd"></button> '}<button class="btn soft" id="lb-prt"></button> <button class="btn soft" id="lb-all"></button></span></div><div id="lb-list"></div><div id="lb-more" class="lb-moreb"></div>`;
+  lbPickLabels();
+  lbMore(Math.max(LIB.shown || 0, LB_PAGE));
+  const pageOf = key => { const [id, p] = key.split('|'); return LIB.pages.find(x => x.b === id && x.p === +p); };
+  out.onchange = e => { const c = e.target; if(c.classList && c.classList.contains('lb-pick')){ c.checked ? LIB.pick.add(c.value) : LIB.pick.delete(c.value); lbPickLabels(); } };
+  out.onclick = e => {
+    const b = e.target.closest('button'); if(!b || !out.contains(b)) return;
+    if(b.id === 'lb-moreb'){ lbMore(R.drawn + LB_PAGE); return; }
+    if(b.id === 'lb-all'){ if(LIB.pick.size) LIB.pick = new Set(); else R.flat.forEach(({g, h}) => LIB.pick.add(g.id + '|' + h.pg.p)); out.querySelectorAll('.lb-pick').forEach(c => c.checked = LIB.pick.has(c.value)); lbPickLabels(); return; }
+    if(b.id === 'lb-prt'){ lbPrint(); return; }
+    if(b.id === 'lb-gd'){ const keys = []; R.flat.forEach(({g, h}) => { const k = g.id + '|' + h.pg.p; if(!LIB.pick.size || LIB.pick.has(k)) keys.push(k); }); guideAddMany(keys); return; }
+    if(b.dataset.ga){ guideAddMany([b.dataset.ga]); b.textContent = '✓ Agregada'; b.disabled = true; return; }
+    if(b.dataset.v){ const [id, p] = b.dataset.v.split('|'); lbViewer(id, +p); return; }
+    if(b.dataset.t){
+      const box = b.closest('.lb-res').querySelector('.lb-full'), pg = pageOf(b.dataset.t);
+      if(box.hidden){ box.innerHTML = '<pre>' + lbMark(pg.t, R.stems) + '</pre>'; box.hidden = false; b.textContent = 'Ocultar texto'; } else { box.hidden = true; b.textContent = 'Ver texto'; }
+    }
+  };
 }
 function lbPrint(){
   const R = LIB.res; if(!R) return;
@@ -558,7 +605,7 @@ async function lbViewer(id, p){
     document.getElementById('lbv-p').onclick = () => lbPaint(LBV.p - 1);
     document.getElementById('lbv-n').onclick = () => lbPaint(LBV.p + 1);
   }
-  if(LBV.id !== id){ LBV.id = id; LBV.doc = null; LBV.n = bk.npages || (bk.pages || []).length; }
+  if(LBV.id !== id){ if(LBV.doc && LBV.doc.destroy){ try { LBV.doc.destroy(); } catch(e){} } LBV.id = id; LBV.doc = null; LBV.n = bk.npages || (bk.pages || []).length; }
   if(!LBV.doc){
     try { const f = await lbGetPdf(id); if(f){ const pdfjs = await lbPdf(); LBV.doc = await pdfjs.getDocument({data:new Uint8Array(await f.arrayBuffer())}).promise; } } catch(e){ console.warn(e); }
   }
