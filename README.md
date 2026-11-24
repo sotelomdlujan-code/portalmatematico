@@ -142,3 +142,40 @@ Entiende año, cantidad (total o por tema), temas, dificultad (fácil, media, di
 **Desde tus libros:** si dejás tildado “Buscar también ejercicios en mis libros cargados”, busca en la Biblioteca páginas sobre esos temas y te muestra los ejercicios que encontró. Marcás los que quieras y se suman al examen (en la clave figura el libro y la página; esos ejercicios no se corrigen solos). Con “solo de mis libros” el examen se arma únicamente con ejercicios de los libros. Revisá siempre cómo se copiaron: las figuras y algunas fórmulas de los PDF pueden salir incompletas.
 
 **Al actualizar:** subí `gen.js`, `gen2.js` (nuevo), `gen3.js` (nuevo) e `index.html`, y recargá con Ctrl + F5.
+
+## Entregas de tareas (entregas.js)
+- En **Tareas → Agregar/Editar**, la casilla “Los alumnos pueden entregar esta tarea desde el aula” activa el cuadro **📤 Entregar mi tarea** (foto con la cámara o archivos; las fotos se achican solas).
+- La profesora ve las entregas en cada tarea → **Ver entregas** (se abren en el visor y se pueden borrar). Al borrar la tarea o el curso se borran también sus entregas.
+- Requiere **republicar `firestore.rules`** y subir `entregas.js`, `app.js`, `materiales.js` e `index.html` (versión `?v=8`).
+- Las tareas anteriores no reciben entregas hasta que las edites y tildes la casilla.
+
+## ✅ Notas, devoluciones y lista de quién entregó (versión 10)
+- **Lista de alumnos:** en **Tareas**, arriba de todo, tocá **Cargar lista** y pegá un nombre por línea (se carga una vez por curso). Se guarda en un lugar que solo lee la profesora.
+- **Quién entregó y quién no:** al abrir una tarea ves **“Entregaron 18 de 25”**, los nombres de quienes faltan y un **mensaje listo para copiar** (con el título, la fecha y el link del aula). Los nombres se comparan sin tildes ni mayúsculas y sin importar el orden. Si un alumno escribió mal su nombre, la entrega aparece con un aviso ⚠️ y un selector para decir “es este alumno”.
+- **Calificar:** cada alumno tiene su tarjeta con **estado** (Sin ver / Vista / Corregida), **nota** y **devolución escrita**. Al abrir un archivo de la entrega pasa sola a *Vista*; al escribir nota o devolución pasa a *Corregida* (podés cambiarlo). Si el alumno entregó varias veces, se agrupan en una sola tarjeta.
+- **El alumno** ve su nota en la tarea → **📊 Ver mi nota**, escribiendo su nombre igual que al entregar. Solo ve la nota y la devolución cuando está *Corregida*.
+- **Privacidad:** no hay cuentas de alumnos, así que el nombre es la “llave”. Alguien que sepa el nombre de un compañero y tenga el link/clave del curso podría ver su nota. Si te preocupa, conviene que las devoluciones no incluyan datos sensibles.
+- **Para actualizar:** subí `entregas.js`, `app.js` e `index.html` (versión `?v=10`) y **republicá `firestore.rules`** (agrega las reglas de `privado` y `notas`). Recargá con Ctrl + F5.
+
+## ⚡ Biblioteca más rápida en el celular (versión 10)
+- **“Ver la página”** se abre al instante con el texto de la página y una barra de progreso mientras baja el PDF original; cuando termina, aparece la página dibujada. Antes la pantalla no mostraba nada hasta que bajaba el libro entero.
+- El PDF se descarga en partes en paralelo y se decodifica con el método nativo del navegador. La primera vez que se abre cada libro en un dispositivo baja el archivo; después queda guardado y abre rápido.
+- La página se dibuja con el tamaño justo para la pantalla (menos píxeles en el celular).
+- Al buscar aparece “Buscando…” y la primera carga de libros nuevos se hace de a 3 a la vez.
+- Para actualizar: subí `biblioteca.js` e `index.html` (versión `?v=10`) y recargá con Ctrl + F5.
+
+## 🤖 Tutor IA: documentos nombrados y escaneados (versión 10)
+- Si la pregunta **nombra un documento de la biblioteca** (por ejemplo “resolvé el examen libre 2do borges noviembre 2025”), el tutor lo reconoce por el **título** y le manda a la IA las páginas de ese documento (todas si son pocas). Antes solo buscaba las palabras de la pregunta dentro del contenido de todos los libros.
+- Los documentos **escaneados o sin texto extraído** ahora figuran en la lista de libros disponibles, y cuando se los nombra el tutor lee las primeras páginas **como imagen** (aunque la casilla “Que mire las páginas como imagen” esté apagada). Requieren que el PDF original esté guardado en la nube.
+- Para actualizar: subí `tutor.js` e `index.html` (versión `?v=10`) y recargá con Ctrl + F5.
+- **Páginas puntuales de libros cortados en partes:** si pedís “la página 11 de Matemática activados 4”, el tutor ubica la parte que contiene esa página (por ejemplo, la 30 es la 7.ª de la parte “págs. 24-45”) y le manda a la IA justo esa página, con su imagen si la lectura de imágenes está activa. Si hay dos ediciones con ese nombre, muestra cada una por separado. Si la página no está en ninguna parte cargada, lo dice. El número es el de página del PDF, que puede no coincidir con el impreso en la hoja. (Subir `tutor.js` e `index.html`, versión `?v=11`.)
+
+## 🏫 Ambiente: aula, kiosco y la Profe Luján (versión 11)
+- **Carpeta `img/`** (5 imágenes WebP livianas): subila entera a GitHub junto con `ambiente.js`, `index.html`, `biblioteca.js`, `tutor.js` y `entregas.js`.
+- **Aula** (Planificaciones, Evaluaciones, Generar examen, Material, Tareas, Consultas) y **kiosco** (Biblioteca, Guías, Tutor IA). La escena aparece arriba de cada pestaña y se puede ocultar con la flechita ▾ (queda guardado).
+- **Pizarra del aula: ejercicio del día.** Sale del generador de exámenes, es el mismo para todos durante el día y cambia cada curso. Botones: *Ver respuesta* → *Me salió* / *No me salió* → *Otro ejercicio*. Suma una **racha 🔥** de días practicando.
+- **Mensaje de la Profe para el curso** (solo la profesora): en el aula, botón 💬 *Mensaje de la Profe*. El texto (hasta 160 caracteres) aparece en el globo de diálogo de los alumnos de ese curso, y cada alumno puede cerrarlo. Se guarda en el curso (campo `pizarra`); no hace falta cambiar las reglas.
+- **Pizarra del kiosco: página sugerida del día** de la biblioteca, con *Abrir esa página* y *Otra*.
+- **La Profe reacciona:** festeja al entregar una tarea, al ver una nota corregida, al guardar una nota, al encontrar resultados y al terminar una respuesta del tutor; pone cara de error si falla una entrega, si no hay resultados o si falla el tutor. Desde otro archivo: `AulaProfe.reaccionar('festejo' | 'error' | 'normal', 'texto', milisegundos)`.
+- Para cambiar qué pestañas van en el kiosco, editá la lista `KIOSCO` al principio de `ambiente.js`.
+

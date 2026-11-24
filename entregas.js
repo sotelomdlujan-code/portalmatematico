@@ -163,6 +163,7 @@
         s.nres = d.exists ? d.data() : {none:true};
       }catch(e){ console.warn(e); s.nres = {err:"No se pudo consultar. Revisá tu conexión y probá de nuevo."}; }
       s.nbusy = false; repaint(tid);
+      if(window.AulaProfe){ const r = s.nres || {}; AulaProfe.reaccionar(r.estado === "corregida" ? "festejo" : (r.none || r.err) ? "error" : "normal", r.estado === "corregida" ? "¡Mirá tu nota! 👇" : r.none ? "No encuentro nada con ese nombre. Revisá cómo lo escribiste 🤔" : r.err ? "No pude consultar. Probá de nuevo." : "Ya vi tu entrega 👀", 3000); }
     };
   }
   function resultHtml(r){
@@ -196,8 +197,10 @@
       await ref.update({ok:true});
       try{ localStorage.setItem("aula_entrega_" + ctx.courseId + "_" + tid, JSON.stringify({at:Date.now(), n:files.length})); }catch(e){}
       s.files.forEach(x => x.url && URL.revokeObjectURL(x.url)); s.files = []; s.comment = ""; s.busy = false; s.msg = "¡Listo! Tu tarea fue enviada a la profesora."; s.err = "";
+      if(window.AulaProfe) AulaProfe.reaccionar("festejo", "¡Entregado! Gracias 🌟", 3500);
     }catch(e){
       console.warn(e); s.busy = false; s.msg = "";
+      if(window.AulaProfe) AulaProfe.reaccionar("error", "No se pudo enviar. Tus archivos siguen acá, probá de nuevo.", 4000);
       s.err = "No se pudo enviar. Revisá tu conexión y probá de nuevo (tus archivos siguen acá)." + (/permission|permiso/i.test(String(e && e.message)) ? " Si sigue fallando, pedile a tu profesora que revise que esta tarea reciba entregas." : "");
     }
     repaint(tid);
@@ -338,7 +341,7 @@
           no.oninput = auto; de.oninput = auto;
           sv.onclick = async () => {
             sv.disabled = true; ms.textContent = "Guardando…";
-            try{ await persist(g, {estado: es.value, nota: no.value.trim(), devolucion: de.value.trim()}); paintBadge(c, g); ms.textContent = "✅ Guardado"; }
+            try{ await persist(g, {estado: es.value, nota: no.value.trim(), devolucion: de.value.trim()}); paintBadge(c, g); ms.textContent = "✅ Guardado"; if(window.AulaProfe) AulaProfe.reaccionar("festejo", "¡Nota guardada!", 1800); }
             catch(e){ console.warn(e); ms.textContent = "No se pudo guardar. ¿Publicaste las reglas nuevas de Firestore?"; }
             sv.disabled = false;
           };

@@ -492,6 +492,7 @@ function renderLib(){
     const out = document.getElementById('lb-out'); if(out) out.innerHTML = '<p class="note">Buscando…</p>';
     await new Promise(r => setTimeout(r, 30));                          // deja que se dibuje “Buscando…” antes de la cuenta pesada
     LIB.res = lbRun(); LIB.pick = new Set(); LIB.shown = LB_PAGE; lbShow();
+    if(window.AulaProfe){ const n = (LIB.res || []).length; AulaProfe.reaccionar(n ? 'festejo' : 'error', n ? '¡Encontré ' + n + ' página' + (n === 1 ? '' : 's') + '! 📖' : 'No encontré nada con esas palabras. Probá con otro término 🤔', 2800); }
   };
   document.getElementById('lb-go').onclick = go;
   document.getElementById('lb-q').onkeydown = e => { if(e.key === 'Enter') go(); };

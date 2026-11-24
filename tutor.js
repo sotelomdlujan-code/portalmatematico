@@ -321,6 +321,7 @@ TAREA: esto es un problema para resolver con el Teorema de Pitágoras (si el usu
   TUTOR.busy = false;
   renderTutor();
   tutorSaveSession();
+  if(window.AulaProfe){ const falla = /^⚠️/.test(live.text); AulaProfe.reaccionar(falla ? 'error' : 'festejo', falla ? 'Uy, algo falló. Probá de nuevo en un momento.' : '', falla ? 3500 : 2200); }
 }
 
 // ===== Herramientas matemáticas para la IA: calculadora exacta y gráficos de funciones =====
