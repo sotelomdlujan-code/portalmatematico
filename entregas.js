@@ -37,6 +37,26 @@
 .ent-card{border:1px solid var(--bd);border-radius:12px;padding:10px 14px;margin:8px 0;background:var(--sf)}
 .ent-card .ent-h{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:baseline}
 .ent-card .files{margin-top:10px}
+.ent-h2{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:center}
+.ent-ros{margin:0 0 16px}
+.ent-sum{margin:2px 0 10px}.ent-big{font:800 1.15rem var(--fb)}
+.ent-chips{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0}
+.ent-st{display:inline-block;padding:2px 10px;border-radius:99px;font-size:.78rem;font-weight:700;border:1px solid var(--bd);background:var(--sf);color:var(--mu)}
+.ent-st.st-vista{background:#fff4d6;color:#7a5600;border-color:#f0d58a}
+.ent-st.st-corregida{background:var(--materials-bg);color:var(--materials-ink);border-color:transparent}
+.ent-nm{padding:3px 10px;border-radius:99px;background:var(--sf);border:1px solid var(--bd);font-size:.85rem}
+.ent-miss{border:1px solid var(--bd);border-radius:12px;padding:10px 14px;margin:10px 0;background:var(--sf)}
+.ent-miss textarea{width:100%}
+.ent-e{border-top:1px solid var(--bd);margin-top:8px;padding-top:4px}
+.ent-un{margin:8px 0;padding:8px 10px;border-radius:10px;background:#fff4d6;color:#7a5600;font-size:.88rem}
+.ent-un select{max-width:100%}
+.ent-gr{margin-top:12px;padding-top:10px;border-top:2px solid var(--bd)}
+.ent-gr-row{display:flex;gap:12px;flex-wrap:wrap}.ent-gr-row>div{flex:1 1 140px}
+.ent-gr textarea{width:100%;min-height:70px}
+.ent-nota{margin-top:12px}
+.ent-res{margin:10px 0 0;padding:12px 14px;border-radius:12px;background:var(--sf);border:1px solid var(--bd)}
+.ent-res .ent-nt{font:800 2rem var(--fb);line-height:1.1}
+.ent-res p{margin:6px 0 0;white-space:pre-wrap}
 @media (max-width:760px){.ent-btns .btn{flex:1 1 100%;justify-content:center}.ent-box{padding:12px}}
 `;
     document.head.appendChild(st);
@@ -66,13 +86,20 @@
     for(let a = 0; a < cs.docs.length; a += 400){ const b = db.batch(); cs.docs.slice(a, a + 400).forEach(d => b.delete(d.ref)); await b.commit(); }
     await ref.delete();
   }
+  async function delDocs(docs){ for(let a = 0; a < docs.length; a += 400){ const b = docs[0].ref.firestore.batch(); docs.slice(a, a + 400).forEach(d => b.delete(d.ref)); await b.commit(); } }
   async function deleteForTask(db, courseId, taskId){
     const sn = await colOf(db, courseId).where("taskId", "==", taskId).get();
     for(const d of sn.docs) await deleteOne(db, courseId, d.id);
+    const ns = await db.collection("courses").doc(courseId).collection("notas").where("taskId", "==", taskId).get();
+    if(ns.size) await delDocs(ns.docs);
   }
   async function deleteAll(db, courseId){
     const sn = await colOf(db, courseId).get();
     for(const d of sn.docs) await deleteOne(db, courseId, d.id);
+    const ns = await db.collection("courses").doc(courseId).collection("notas").get();
+    if(ns.size) await delDocs(ns.docs);
+    try{ await db.collection("courses").doc(courseId).collection("privado").doc("alumnos").delete(); }catch(e){}
+    delete ROSTER[courseId];
   }
 
   /* ---------- alumno ---------- */
@@ -101,6 +128,13 @@
       <div class="err ent-err">${esc(s.err)}</div>
       ${s.busy ? `<div class="ent-prog"><i style="width:${Math.round(s.pct * 100)}%"></i></div><div class="note">${esc(s.msg)}</div>` : `<div class="acts" style="margin-top:10px"><button type="button" class="btn ent-send" ${s.files.length ? "" : "disabled"}>Enviar tarea${s.files.length ? " (" + s.files.length + ")" : ""}</button></div>`}
       ${!s.busy && s.msg ? `<div class="ent-ok">${esc(s.msg)}</div>` : ""}
+    </div>
+    <div class="ent-box ent-nota">
+      <h4>📊 Ver mi nota</h4>
+      <p class="note" style="margin:0">Escribí tu nombre y apellido igual que cuando entregaste.</p>
+      <input class="ent-nn" maxlength="60" value="${esc(s.nname !== undefined ? s.nname : s.name)}" placeholder="Ej: Lucas Gómez">
+      <div class="acts" style="margin-top:8px"><button type="button" class="btn soft ent-vn" ${s.nbusy ? "disabled" : ""}>${s.nbusy ? "Buscando…" : "Ver mi nota"}</button></div>
+      ${s.nres ? resultHtml(s.nres) : ""}
     </div>`;
     host.querySelector(".ent-name").oninput = e => { s.name = e.target.value; };
     host.querySelector(".ent-com").oninput = e => { s.comment = e.target.value; };
@@ -119,6 +153,23 @@
     host.querySelector(".ent-pick").onchange = e => add(e.target);
     host.querySelectorAll("[data-rm]").forEach(b => b.onclick = () => { const r = s.files.splice(+b.dataset.rm, 1)[0]; if(r && r.url) URL.revokeObjectURL(r.url); s.err = ""; repaint(tid); });
     const send = host.querySelector(".ent-send"); if(send) send.onclick = () => submit(ctx);
+    const nn = host.querySelector(".ent-nn"); nn.oninput = e => { s.nname = e.target.value; };
+    host.querySelector(".ent-vn").onclick = async () => {
+      s.nname = nn.value; const nm = (s.nname || "").trim();
+      if(!nm){ s.nres = {err:"Escribí tu nombre y apellido."}; return repaint(tid); }
+      s.nbusy = true; repaint(tid);
+      try{
+        const d = await notaRef(ctx.db, ctx.courseId, tid, nkey(nm)).get();
+        s.nres = d.exists ? d.data() : {none:true};
+      }catch(e){ console.warn(e); s.nres = {err:"No se pudo consultar. Revisá tu conexión y probá de nuevo."}; }
+      s.nbusy = false; repaint(tid);
+    };
+  }
+  function resultHtml(r){
+    if(r.err) return `<div class="err">${esc(r.err)}</div>`;
+    if(r.none) return `<div class="ent-res">Todavía no hay nada para ese nombre. Puede ser que tu profesora aún no haya visto tu entrega, o que el nombre no sea igual al que usaste al entregar.</div>`;
+    if(r.estado === "corregida") return `<div class="ent-res"><small>Tu nota</small><div class="ent-nt">${esc(r.nota || "—")}</div>${r.devolucion ? `<p><b>Devolución de tu profesora:</b>\n${esc(r.devolucion)}</p>` : ""}</div>`;
+    return `<div class="ent-res">👀 Tu profesora ya vio tu entrega. Todavía no está corregida.</div>`;
   }
 
   async function submit(ctx){
@@ -152,41 +203,177 @@
     repaint(tid);
   }
 
-  /* ---------- profesora ---------- */
+  /* ---------- lista de alumnos, notas y quién entregó ---------- */
+  // Los nombres se comparan sin tildes, sin mayúsculas y sin importar el orden ("Gómez Lucas" = "lucas gomez").
+  const norm = s => String(s ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9 ]+/g, " ");
+  const toks = s => norm(s).split(/\s+/).filter(Boolean);
+  const nkey = s => toks(s).sort().join("-").slice(0, 90) || "x";
+  const cref = (db, cid) => db.collection("courses").doc(cid);
+  const notaRef = (db, cid, tid, key) => cref(db, cid).collection("notas").doc(tid + "__" + key);
+  const rosterRef = (db, cid) => cref(db, cid).collection("privado").doc("alumnos");
+  const ESTADOS = {sin:"Sin ver", vista:"Vista", corregida:"Corregida"};
+  const ROSTER = {}, RELOAD = {}, OPENED = {};
+  const fdate = iso => { try{ return new Date(iso + "T12:00:00").toLocaleDateString("es-AR", {day:"numeric", month:"numeric"}); }catch(e){ return iso; } };
+
+  async function getRoster(db, cid){
+    if(ROSTER[cid]) return ROSTER[cid];
+    const s = await rosterRef(db, cid).get(), d = s.exists ? s.data() : {};
+    return ROSTER[cid] = {lista: Array.isArray(d.lista) ? d.lista : [], alias: (d.alias && typeof d.alias === "object") ? d.alias : {}};
+  }
+  function parseRoster(text){
+    const seen = new Set(), out = [];
+    String(text || "").split(/\r?\n/).forEach(l => {
+      const n = l.replace(/^\s*\d+\s*[.)\-–:]\s+/, "").replace(/\s+/g, " ").trim().slice(0, 80);
+      if(!n) return; const k = nkey(n); if(seen.has(k)) return; seen.add(k); out.push(n);
+    });
+    return out.slice(0, 200);
+  }
+  // Devuelve la clave del alumno de la lista al que corresponde un nombre escrito en una entrega (o null).
+  function matchRoster(author, R, rkeys){
+    const k = nkey(author);
+    if(R.alias[k] && rkeys.includes(R.alias[k])) return R.alias[k];
+    if(rkeys.includes(k)) return k;
+    const t = toks(author); if(!t.length) return null;
+    const c = R.lista.filter(n => { const rt = toks(n); return t.every(x => rt.includes(x)) || rt.every(x => t.includes(x)); });   // "Lucas" ↔ "Lucas Gómez", si es único
+    return c.length === 1 ? nkey(c[0]) : null;
+  }
+  const copyText = async (txt, ta) => {
+    try{ await navigator.clipboard.writeText(txt); return true; }catch(e){}
+    try{ ta.focus(); ta.select(); return document.execCommand("copy"); }catch(e){ return false; }
+  };
+
+  /* ---------- profesora: lista de alumnos del curso ---------- */
+  function mountRoster(host, ctx){
+    css();
+    host.innerHTML = `<div class="ent-box ent-ros"><p class="note" style="margin:0">Cargando lista de alumnos…</p></div>`;
+    const paint = R => {
+      host.innerHTML = `<div class="ent-box ent-ros"><div class="ent-h2"><b>👥 Lista de alumnos del curso</b><button type="button" class="btn soft ent-re">${R.lista.length ? "Editar lista" : "Cargar lista"}</button></div>
+        <p class="note" style="margin:6px 0 0">${R.lista.length ? `${R.lista.length} alumnos cargados. En cada tarea vas a ver cuántos entregaron y quiénes faltan.` : "Cargala una sola vez (un nombre por línea) y cada tarea te va a mostrar quién entregó y quién no."}</p><div class="ent-ed"></div></div>`;
+      host.querySelector(".ent-re").onclick = () => {
+        const ed = host.querySelector(".ent-ed");
+        ed.innerHTML = `<label>Un alumno por línea (podés pegar la lista desde Excel o Classroom)</label><textarea class="ent-lt" style="min-height:170px" placeholder="Ana Pérez&#10;Lucas Gómez&#10;…">${esc(R.lista.join("\n"))}</textarea>
+          <div class="acts" style="margin-top:8px"><button type="button" class="btn ent-rs">Guardar lista</button><button type="button" class="btn soft ent-rc">Cancelar</button></div><div class="err ent-rerr"></div>`;
+        ed.querySelector(".ent-rc").onclick = () => paint(R);
+        ed.querySelector(".ent-rs").onclick = async () => {
+          const lista = parseRoster(ed.querySelector(".ent-lt").value), keys = new Set(lista.map(nkey)), alias = {};
+          Object.keys(R.alias).forEach(a => { if(keys.has(R.alias[a])) alias[a] = R.alias[a]; });
+          try{
+            await rosterRef(ctx.db, ctx.courseId).set({lista, alias, updated:Date.now()});
+            R.lista = lista; R.alias = alias; Object.values(RELOAD).forEach(f => f()); paint(R);
+          }catch(e){ console.warn(e); ed.querySelector(".ent-rerr").textContent = "No se pudo guardar. ¿Publicaste las reglas nuevas de Firestore?"; }
+        };
+      };
+    };
+    getRoster(ctx.db, ctx.courseId).then(paint).catch(e => { console.warn(e); host.innerHTML = `<div class="ent-box"><div class="err">No se pudo leer la lista de alumnos. ¿Publicaste las reglas nuevas de Firestore? (${esc(e.message)})</div></div>`; });
+  }
+
+  /* ---------- profesora: entregas, notas y faltantes de una tarea ---------- */
   function mountTeacher(host, ctx){
-    css(); const tid = ctx.task.id;
-    host.innerHTML = `<div class="ent-box"><h4>📥 Entregas de los alumnos</h4>${ctx.task.recibe ? "" : `<p class="note" style="margin:0 0 8px">Esta tarea no recibe entregas desde el aula. Para activarlo: Editar → tildar “Los alumnos pueden entregar…”.</p>`}<button type="button" class="btn soft ent-load">Ver entregas</button><div class="ent-list"></div></div>`;
-    const list = host.querySelector(".ent-list"), btn = host.querySelector(".ent-load");
+    css(); const tid = ctx.task.id, det = host.closest("details");
+    host.innerHTML = `<div class="ent-box"><h4>📥 Entregas de los alumnos</h4>${ctx.task.recibe ? "" : `<p class="note" style="margin:0 0 8px">Esta tarea no recibe entregas desde el aula. Para activarlo: Editar → tildar “Los alumnos pueden entregar…”.</p>`}<div class="ent-sum"></div><button type="button" class="btn soft ent-load">Ver entregas</button><div class="ent-list"></div></div>`;
+    const list = host.querySelector(".ent-list"), btn = host.querySelector(".ent-load"), sum = host.querySelector(".ent-sum");
+    let started = false, groups = [], R = {lista:[], alias:{}};
+
+    const sumHtml = () => {
+      const n = s => groups.filter(g => g.estado === s).length;
+      const matched = groups.filter(g => g.rk).length;
+      return (R.lista.length ? `<div class="ent-big">Entregaron ${matched} de ${R.lista.length}</div>` : `<div class="ent-big">${groups.length} entrega${groups.length === 1 ? "" : "s"}</div>`)
+        + `<div class="ent-chips"><span class="ent-st st-sin">${n("sin")} sin ver</span><span class="ent-st st-vista">${n("vista")} vistas</span><span class="ent-st st-corregida">${n("corregida")} corregidas</span></div>`;
+    };
+    const persist = async (g, v) => {
+      const b = ctx.db.batch(), now = Date.now();
+      g.keys.forEach(k => b.set(notaRef(ctx.db, ctx.courseId, tid, k), {taskId:tid, author:g.name, estado:v.estado, nota:v.nota, devolucion:v.devolucion, updated:now}));
+      await b.commit(); g.grade = {...v, updated:now}; g.estado = v.estado; sum.innerHTML = sumHtml();
+    };
+    const paintBadge = (card, g) => { const s = card.querySelector(".ent-h .ent-st"); s.className = "ent-st st-" + g.estado; s.textContent = ESTADOS[g.estado]; card.querySelector(".gr-es").value = g.estado; };
+
     const load = async () => {
-      btn.disabled = true; btn.textContent = "Cargando…"; list.innerHTML = "";
+      started = true; OPENED[tid] = true; btn.disabled = true; btn.textContent = "Cargando…"; list.innerHTML = "";
       try{
-        const sn = await colOf(ctx.db, ctx.courseId).where("taskId", "==", tid).get();
+        const [Rr, sn, ns] = await Promise.all([getRoster(ctx.db, ctx.courseId), colOf(ctx.db, ctx.courseId).where("taskId", "==", tid).get(), cref(ctx.db, ctx.courseId).collection("notas").where("taskId", "==", tid).get()]);
+        R = Rr;
         const all = sn.docs.map(d => ({id:d.id, ...d.data()})).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
         const ok = all.filter(e => e.ok), bad = all.filter(e => !e.ok);
-        btn.textContent = `Actualizar (${ok.length})`;
-        list.innerHTML = (ok.length ? "" : `<p class="note">Todavía no hay entregas de esta tarea.</p>`) + ok.map(e => `<div class="ent-card"><div class="ent-h"><b>🙋 ${esc(e.author)}</b><small>${esc(fmt(e.createdAt))}</small></div>
-          ${e.comment ? `<p style="margin:6px 0 0;white-space:pre-wrap">${esc(e.comment)}</p>` : ""}
-          <div class="files">${(e.files || []).map((f, i) => `<button type="button" class="gdl" data-ef="${esc(e.id)}:${i}">${ico(f)} ${esc(f.name)}</button>`).join("")}</div>
-          <div class="acts"><button type="button" class="btn del" data-ed="${esc(e.id)}">Borrar entrega</button></div></div>`).join("")
+        const grades = {}; ns.forEach(d => { grades[d.id.slice(tid.length + 2)] = d.data(); });
+        const rkeys = R.lista.map(nkey), by = {}; groups = [];
+        ok.forEach(e => {
+          const ak = nkey(e.author), rk = R.lista.length ? matchRoster(e.author, R, rkeys) : null, canon = rk || "~" + ak;
+          let g = by[canon]; if(!g){ g = by[canon] = {rk, name: rk ? R.lista[rkeys.indexOf(rk)] : e.author, keys:[], entregas:[]}; groups.push(g); }
+          if(!g.keys.includes(ak)) g.keys.push(ak); g.entregas.push(e);
+        });
+        groups.forEach(g => {
+          let best = null; g.keys.forEach(k => { const x = grades[k]; if(x && (!best || (x.updated || 0) > (best.updated || 0))) best = x; });
+          g.grade = best || {estado:"sin", nota:"", devolucion:""}; g.estado = ESTADOS[g.grade.estado] ? g.grade.estado : "sin";
+        });
+        const ORD = {sin:0, vista:1, corregida:2};
+        groups.sort((a, b) => ORD[a.estado] - ORD[b.estado] || (b.entregas[0].createdAt || 0) - (a.entregas[0].createdAt || 0));
+        const missing = R.lista.filter((n, i) => !by[rkeys[i]]);
+        const free = R.lista.map((n, i) => ({n, k:rkeys[i]})).filter(x => !by[x.k]);       // alumnos de la lista sin ninguna entrega (para asignar nombres mal escritos)
+        btn.textContent = `Actualizar (${ok.length})`; sum.innerHTML = sumHtml();
+
+        const url = location.origin + location.pathname + "?c=" + ctx.courseId, d = ctx.task.entrega, hoy = new Date().toLocaleDateString("en-CA");
+        const msg = `Hola 👋 Todavía no recibí la tarea “${ctx.task.title || ""}”${d ? (d < hoy ? ` (era para el ${fdate(d)})` : ` (se entrega el ${fdate(d)})`) : ""}.\n\nFaltan entregar:\n${missing.map(n => "• " + n).join("\n")}\n\nLa pueden entregar desde el aula (foto o archivo): ${url}\n¡Gracias!`;
+
+        const card = (g, i) => `<div class="ent-card" data-gi="${i}"><div class="ent-h"><b>🙋 ${esc(g.name)}</b><span><span class="ent-st st-${g.estado}">${ESTADOS[g.estado]}</span> <small>${esc(fmt(g.entregas[0].createdAt))}${g.entregas.length > 1 ? ` · ${g.entregas.length} entregas` : ""}</small></span></div>
+          ${R.lista.length && !g.rk ? `<div class="ent-un">⚠️ Este nombre no está en tu lista. ${free.length ? `<select class="as-sel">${free.map((x, j) => `<option value="${j}">${esc(x.n)}</option>`).join("")}</select> <button type="button" class="btn soft as-bt">Es este alumno</button>` : ""}</div>` : ""}
+          ${g.entregas.map(e => `<div class="ent-e">${g.entregas.length > 1 ? `<small>${esc(fmt(e.createdAt))}</small>` : ""}${e.comment ? `<p style="margin:6px 0 0;white-space:pre-wrap">${esc(e.comment)}</p>` : ""}
+            <div class="files">${(e.files || []).map((f, k) => `<button type="button" class="gdl" data-ef="${esc(e.id)}:${k}">${ico(f)} ${esc(f.name)}</button>`).join("")}</div>
+            <div class="acts"><button type="button" class="btn del" data-ed="${esc(e.id)}">Borrar entrega</button></div></div>`).join("")}
+          <div class="ent-gr"><div class="ent-gr-row"><div><label>Estado</label><select class="gr-es">${Object.keys(ESTADOS).map(k => `<option value="${k}" ${k === g.estado ? "selected" : ""}>${ESTADOS[k]}</option>`).join("")}</select></div><div><label>Nota</label><input class="gr-no" maxlength="20" placeholder="Ej: 8" value="${esc(g.grade.nota || "")}"></div></div>
+            <label>Devolución para el alumno</label><textarea class="gr-de" maxlength="1000" placeholder="Ej: Muy bien. Revisá el ejercicio 4: el signo cambia al pasar restando.">${esc(g.grade.devolucion || "")}</textarea>
+            <div class="acts"><button type="button" class="btn gr-sv">Guardar nota</button><span class="note gr-ms"></span></div></div></div>`;
+
+        list.innerHTML = (missing.length ? `<div class="ent-miss"><b>Faltan entregar (${missing.length}):</b><div class="ent-chips">${missing.map(n => `<span class="ent-nm">${esc(n)}</span>`).join("")}</div>
+            <label>Mensaje para copiar y mandar</label><textarea class="ent-msg" style="min-height:150px">${esc(msg)}</textarea><div class="acts"><button type="button" class="btn soft ent-cp">📋 Copiar mensaje</button><span class="note ent-cpm"></span></div></div>` : (R.lista.length ? `<div class="ent-ok">🎉 Entregaron todos los de la lista.</div>` : `<p class="note">Cargá la lista de alumnos (arriba de las tareas) para ver también quiénes faltan.</p>`))
+          + (ok.length ? "" : `<p class="note">Todavía no hay entregas de esta tarea.</p>`) + groups.map(card).join("")
           + (bad.length ? `<p class="note">⚠️ ${bad.length} entrega${bad.length === 1 ? "" : "s"} incompleta${bad.length === 1 ? "" : "s"} (se cortó la subida). <button type="button" class="btn del" data-eb="1">Borrar ${bad.length === 1 ? "esa" : "esas"}</button></p>` : "");
-        list.querySelectorAll("[data-ef]").forEach(b => b.onclick = () => {
-          const [eid, idx] = [b.dataset.ef.slice(0, b.dataset.ef.lastIndexOf(":")), +b.dataset.ef.slice(b.dataset.ef.lastIndexOf(":") + 1)], e = ok.find(x => x.id === eid), f = e.files[idx];
-          AulaMateriales.openViewer(ctx.db, null, f.name, {
-            key: "e:" + eid + ":" + idx, format: "b64",
-            async getMeta(){ return {...f, createdAt: e.createdAt}; },
-            async getChunks(){ const cs = await colOf(ctx.db, ctx.courseId).doc(eid).collection("chunks").where("f", "==", idx).get(); const a = []; cs.forEach(d => a.push(d.data())); return a; }
+
+        const cp = list.querySelector(".ent-cp");
+        if(cp) cp.onclick = async () => { const ta = list.querySelector(".ent-msg"), m = list.querySelector(".ent-cpm"); m.textContent = (await copyText(ta.value, ta)) ? "¡Copiado!" : "Seleccioná el texto y copialo."; };
+
+        list.querySelectorAll(".ent-card").forEach(c => {
+          const g = groups[+c.dataset.gi], es = c.querySelector(".gr-es"), no = c.querySelector(".gr-no"), de = c.querySelector(".gr-de"), ms = c.querySelector(".gr-ms"), sv = c.querySelector(".gr-sv");
+          let touched = false; es.onchange = () => { touched = true; };
+          const auto = () => { if(!touched && es.value !== "corregida"){ es.value = "corregida"; } };         // si escribís nota o devolución, pasa a “Corregida” (podés cambiarlo)
+          no.oninput = auto; de.oninput = auto;
+          sv.onclick = async () => {
+            sv.disabled = true; ms.textContent = "Guardando…";
+            try{ await persist(g, {estado: es.value, nota: no.value.trim(), devolucion: de.value.trim()}); paintBadge(c, g); ms.textContent = "✅ Guardado"; }
+            catch(e){ console.warn(e); ms.textContent = "No se pudo guardar. ¿Publicaste las reglas nuevas de Firestore?"; }
+            sv.disabled = false;
+          };
+          const ab = c.querySelector(".as-bt");
+          if(ab) ab.onclick = async () => {
+            const x = free[+c.querySelector(".as-sel").value]; if(!x) return; ab.disabled = true;
+            try{ g.keys.forEach(k => { R.alias[k] = x.k; }); await rosterRef(ctx.db, ctx.courseId).set({lista:R.lista, alias:R.alias, updated:Date.now()}); load(); }
+            catch(e){ console.warn(e); alert("No se pudo guardar."); ab.disabled = false; }
+          };
+          c.querySelectorAll("[data-ef]").forEach(b => b.onclick = () => {
+            const [eid, idx] = [b.dataset.ef.slice(0, b.dataset.ef.lastIndexOf(":")), +b.dataset.ef.slice(b.dataset.ef.lastIndexOf(":") + 1)], e = ok.find(z => z.id === eid), f = e.files[idx];
+            if(g.estado === "sin") persist(g, {estado:"vista", nota:g.grade.nota || "", devolucion:g.grade.devolucion || ""}).then(() => paintBadge(c, g)).catch(() => {});   // al abrir una entrega pasa a “Vista”
+            AulaMateriales.openViewer(ctx.db, null, f.name, {
+              key: "e:" + eid + ":" + idx, format: "b64",
+              async getMeta(){ return {...f, createdAt: e.createdAt}; },
+              async getChunks(){ const cs = await colOf(ctx.db, ctx.courseId).doc(eid).collection("chunks").where("f", "==", idx).get(); const a = []; cs.forEach(q => a.push(q.data())); return a; }
+            });
           });
         });
         list.querySelectorAll("[data-ed]").forEach(b => b.onclick = async () => { if(!confirm("¿Borrar esta entrega? No se puede deshacer.")) return; b.disabled = true; try{ await deleteOne(ctx.db, ctx.courseId, b.dataset.ed); }catch(e){ alert("No se pudo borrar."); } load(); });
         list.querySelectorAll("[data-eb]").forEach(b => b.onclick = async () => { b.disabled = true; try{ for(const e of bad) await deleteOne(ctx.db, ctx.courseId, e.id); }catch(x){ alert("No se pudo borrar."); } load(); });
-      }catch(e){ console.warn(e); list.innerHTML = `<div class="err">No se pudieron cargar las entregas. ¿Publicaste las reglas nuevas de Firestore? (${esc(e.message)})</div>`; btn.textContent = "Reintentar"; }
+      }catch(e){ console.warn(e); list.innerHTML = `<div class="err">No se pudieron cargar las entregas. ¿Publicaste las reglas nuevas de Firestore? (${esc(e.message)})</div>`; btn.textContent = "Reintentar"; started = false; }
       btn.disabled = false;
     };
-    btn.onclick = load;
+    btn.onclick = () => { delete ROSTER[ctx.courseId]; load(); };
+    RELOAD[tid] = () => { if(host.isConnected && started) load(); };
+    if(ctx.task.recibe){
+      if(det) det.addEventListener("toggle", () => { if(det.open && !started) load(); });
+      if(OPENED[tid] || (det && det.open)) load();                        // al abrir la tarea, o si ya estaba abierta, se cargan solas
+    }
   }
 
   window.AulaEntregas = {
     mount(host, ctx){ if(ctx.canEdit) mountTeacher(host, ctx); else mountStudent(host, ctx); },
+    mountRoster,
     deleteForTask, deleteAll
   };
 })();

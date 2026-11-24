@@ -99,6 +99,7 @@ function render(){
   let h = `<div class="top"><h2>${S.label}</h2><div class="tools">`;
   if(canEdit()) h += `<button class="btn" id="add">Agregar ${tab==='plans'?'planificación':tab==='exams'?'evaluación':tab==='tasks'?'tarea':'material'}</button>`;
   h += `</div></div><p class="lead">${S.lead}</p>`;
+  if(tab==='tasks' && canEdit() && window.AulaEntregas) h += `<div id="ent-roster"></div>`;
   if(!list.length) h += `<div class="empty">${typeof LAPI==='undefined'?'':LAPI}<div class="big">${S.empty}</div>${canEdit() ? 'Usá el botón de arriba para crear la primera.' : 'Cuando tu profesora publique algo, lo vas a ver acá.'}</div>`;
   list.forEach(d => {
     const dt = d.fecha || d.entrega;
@@ -125,6 +126,7 @@ function render(){
   document.querySelectorAll('#main details.item').forEach(el => { if(open.includes(el.dataset.id)) el.open = true; });
   document.querySelectorAll('[data-gd]').forEach(b => b.onclick = async () => { b.disabled = true; const t = b.textContent; b.textContent = 'Descargando…'; try { await downloadGuide(b.dataset.gd, b.dataset.gn); } catch(e){ console.error(e); alert('No se pudo descargar la guía. Probá de nuevo.'); } b.disabled = false; b.textContent = t; });
   document.querySelectorAll('[data-lf]').forEach(b => b.onclick = () => { if(window.AulaMateriales) AulaMateriales.openViewer(fs, b.dataset.lf, b.dataset.lfn); });
+  if(tab==='tasks' && canEdit() && window.AulaEntregas && $('#ent-roster')) AulaEntregas.mountRoster($('#ent-roster'), {db: fs, courseId});
   if(tab==='tasks' && window.AulaEntregas){
     const cObj = canEdit() ? courses.find(x => x.id===courseId) : studentCourse;
     document.querySelectorAll('.ent-host').forEach(host => {
