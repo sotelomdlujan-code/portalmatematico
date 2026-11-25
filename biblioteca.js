@@ -122,7 +122,7 @@ async function lbSync(msg){
         try { await lbDB.put('books', b); } catch(e){}
         got++; msg && msg('Descargando libros nuevos… ' + got + ' de ' + need);
       }
-      books[k] = {...b, title:r.title, created:r.created, npages:r.npages, ocr:!!r.ocr, hasPdf:!!r.hasPdf, size:r.size||0, pdfChunks:r.pdfChunks||0};
+      books[k] = {...b, title:r.title, editorial:r.editorial||'', created:r.created, npages:r.npages, ocr:!!r.ocr, hasPdf:!!r.hasPdf, size:r.size||0, pdfChunks:r.pdfChunks||0};
     }
   };
   await Promise.all([worker(), worker(), worker()]);
@@ -289,9 +289,10 @@ async function lbAddFile(file){
     parts.slice(a, a + 400).forEach(o => b.set(ref.collection('chunks').doc(String(o.i).padStart(4, '0')), o));
     await b.commit();
   }
-  await ref.set({title, npages:n, chars, ocr, created:now, updated:now, chunks:parts.length});
+  const editorial = (typeof shDetect === 'function') ? shDetect(title, texts) : '';
+  await ref.set({title, npages:n, chars, ocr, created:now, updated:now, chunks:parts.length, editorial});
   try { await lbDB.put('books', {id, updated:now, pages:texts}); await lbDB.put('files', file, id); } catch(e){ console.warn('No se pudo guardar el PDF en este navegador', e); }
-  LIB.books.unshift({id, title, updated:now, created:now, npages:n, ocr, pages:texts, hasPdf:false});
+  LIB.books.unshift({id, title, editorial, updated:now, created:now, npages:n, ocr, pages:texts, hasPdf:false});
   let cloud = false;
   if(file.size <= LB_MAXPDF){ try { await lbStorePdf(id, file, p => lbProg('Guardando el PDF de “' + title + '” en la nube…', 0.95 + p * 0.05)); cloud = true; } catch(e){ console.error(e); } }
   LIB.seen && LIB.seen.delete(id); lbIndex();
@@ -470,6 +471,7 @@ function renderLib(){
     <div class="acts"><button class="btn" id="lb-go" ${LIB.books.length ? '' : 'disabled'}>🔍 Buscar</button></div>
   </div>
   <div id="lb-out" class="lib-ui"></div>
+  ${typeof shelfHTML === 'function' ? shelfHTML() : ''}
   <details class="lb-docsbox lib-ui"><summary class="lb-h">Documentos (${LIB.books.length})</summary>
   ${!RO && LIB.books.some(b => !b.hasPdf) ? `<div class="lb-note lib-ui"><b>${LIB.books.filter(b => !b.hasPdf).length} documento(s) no tienen el PDF original en la nube</b>, por eso solo se ven desde el navegador donde los cargaste. Tocá “☁️ Subir PDF” en cada uno (si no está en este navegador te pide elegir el archivo), o <button class="btn soft" id="lb-upall">Subir todos los que pueda</button></div>` : ''}
   <div class="lb-docs lib-ui">${LIB.books.length ? LIB.books.map(b => `<div class="lb-doc"><div class="lb-dt"><b>${esc(b.title)}</b><div class="lb-meta">${b.npages || (b.pages || []).length} páginas${b.ocr ? ' · OCR' : ''}${b.hasPdf ? '' : ' · PDF sin subir a la nube'}</div></div><div class="lb-da"><button class="btn soft" data-open="${b.id}">Ver</button> ${b.hasPdf ? `<button class="btn soft" data-dl="${b.id}">⬇ Descargar</button>` : (RO ? '' : `<button class="btn" data-up="${b.id}">☁️ Subir PDF</button>`)}${RO ? '' : ` <button class="ib" data-ren="${b.id}" title="Cambiar nombre">✏️</button> <button class="ib" data-del="${b.id}" title="Borrar">🗑</button>`}</div></div>`).join('') : `<div class="empty"><div class="big">${RO ? 'Todavía no hay documentos' : 'Todavía no cargaste documentos'}</div>${RO ? '' : 'Tocá “Agregar PDF” para subir tus libros, guías y apuntes.'}</div>`}</div></details>
@@ -509,6 +511,7 @@ function renderLib(){
   if(dd) document.addEventListener('click', function cl(e){ if(!document.body.contains(dd)){ document.removeEventListener('click', cl); return; } if(!dd.contains(e.target)) dd.open = false; });
   document.querySelectorAll('[data-open]').forEach(b => b.onclick = () => lbViewer(b.dataset.open, 1));
   document.querySelectorAll('[data-dl]').forEach(b => b.onclick = () => lbDownload(b.dataset.dl, b));
+  if(typeof shelfBind === 'function') shelfBind();
   if(LIB.busy) lbProg(LIB.busy.msg, LIB.busy.pct);
   if(LIB.res) lbShow();
 }
