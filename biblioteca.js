@@ -122,7 +122,7 @@ async function lbSync(msg){
         try { await lbDB.put('books', b); } catch(e){}
         got++; msg && msg('Descargando libros nuevos… ' + got + ' de ' + need);
       }
-      books[k] = {...b, title:r.title, editorial:r.editorial||'', created:r.created, npages:r.npages, ocr:!!r.ocr, hasPdf:!!r.hasPdf, size:r.size||0, pdfChunks:r.pdfChunks||0};
+      books[k] = {...b, title:r.title, editorial:r.editorial||'', created:r.created, npages:r.npages, ocr:!!r.ocr, hasPdf:!!r.hasPdf, size:r.size||0, pdfChunks:r.pdfChunks||0, store:r.store||''};
     }
   };
   await Promise.all([worker(), worker(), worker()]);
@@ -144,17 +144,61 @@ const LB_MAXPDF = 20 * 1024 * 1024, LB_BS = 510000;
 const lbRO = () => !canEdit();
 function lbB64(u8){ let s = ''; for(let i = 0; i < u8.length; i += 32768) s += String.fromCharCode.apply(null, u8.subarray(i, i + 32768)); return btoa(s); }
 function lbUnb64(b){ const s = atob(b), u = new Uint8Array(s.length); for(let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i); return u; }
-async function lbStorePdf(id, blob, prog){
-  const buf = new Uint8Array(await blob.arrayBuffer()), n = Math.ceil(buf.length / LB_BS), ref = fs.collection('library').doc(id);
-  const old = await ref.collection('pdf').get();
+/* Los libros pueden vivir en un repositorio PRIVADO de GitHub (store:'gh'), a través de un Worker gratuito de Cloudflare que solo deja pasar
+   a la profesora y a los lectores habilitados (ver GUIA-BIBLIOTECA-PRIVADA.md). Si window.PDF_PROXY está vacío, todo sigue en Firestore como antes. */
+const LB_MAXBOOK = (window.PDF_PROXY ? 50 : 20) * 1024 * 1024;
+const lbProxy = () => String(window.PDF_PROXY || '').replace(/\/+$/, '');
+async function lbTok(){ if(typeof auth === 'undefined' || !auth || !auth.currentUser) throw new Error('Sin sesión'); return auth.currentUser.getIdToken(); }
+function lbXhr(method, url, tok, body, onUp){                       // XMLHttpRequest para poder mostrar el progreso de subida
+  return new Promise((ok, no) => {
+    const x = new XMLHttpRequest(); x.open(method, url); x.setRequestHeader('Authorization', 'Bearer ' + tok);
+    if(body) x.setRequestHeader('Content-Type', 'application/json');
+    if(onUp && x.upload) x.upload.onprogress = e => { if(e.lengthComputable) onUp(e.loaded / e.total); };
+    x.onload = () => (x.status >= 200 && x.status < 300) ? ok(x.responseText) : no(new Error('HTTP ' + x.status + ' ' + x.responseText.slice(0, 200)));
+    x.onerror = () => no(new Error('Sin conexión')); x.send(body || null);
+  });
+}
+async function lbGhPut(id, blob, prog){
+  const base = lbProxy(), tok = await lbTok();
+  const sha = (JSON.parse(await lbXhr('GET', base + '/sha/' + id, tok)) || {}).sha;
+  const u8 = new Uint8Array(await blob.arrayBuffer()), parts = [];
+  for(let i = 0; i < u8.length; i += 98304) parts.push(lbB64(u8.subarray(i, i + 98304)));   // 98304 = múltiplo de 3: las partes se pueden unir
+  const body = JSON.stringify(Object.assign({message:'Libro ' + id, content:parts.join('')}, sha ? {sha} : {}));
+  await lbXhr('PUT', base + '/pdf/' + id, tok, body, p => prog && prog(Math.min(0.99, p)));
+}
+async function lbGhGet(id, bk, onProg){
+  const r = await fetch(lbProxy() + '/pdf/' + id, {headers:{Authorization:'Bearer ' + await lbTok()}});
+  if(!r.ok) throw new Error('HTTP ' + r.status);
+  const total = +r.headers.get('Content-Length') || bk.size || 0;
+  if(!r.body || !r.body.getReader) return new Blob([await r.arrayBuffer()], {type:'application/pdf'});
+  const rd = r.body.getReader(), parts = []; let got = 0;
+  for(;;){ const {done, value} = await rd.read(); if(done) break; parts.push(value); got += value.length; if(onProg && total) onProg(Math.min(1, got / total)); }
+  return new Blob(parts, {type:'application/pdf'});
+}
+async function lbGhDel(id){ await lbXhr('DELETE', lbProxy() + '/pdf/' + id, await lbTok()); }
+async function lbClearFsPdf(id){                                     // borra los trozos viejos que haya en Firestore
+  const old = await fs.collection('library').doc(id).collection('pdf').get();
   for(let a = 0; a < old.docs.length; a += 400){ const b = fs.batch(); old.docs.slice(a, a + 400).forEach(d => b.delete(d.ref)); await b.commit(); }
+}
+async function lbStorePdf(id, blob, prog){
+  const ref = fs.collection('library').doc(id);
+  if(lbProxy()){
+    await lbGhPut(id, blob, prog);                                   // primero se sube; solo si salió bien se libera lo de Firestore
+    await ref.update({hasPdf:true, size:blob.size, pdfChunks:0, store:'gh'});
+    try { await lbClearFsPdf(id); } catch(e){ console.warn(e); }
+    const bk = LIB.books.find(x => x.id === id); if(bk){ bk.hasPdf = true; bk.size = blob.size; bk.pdfChunks = 0; bk.store = 'gh'; }
+    try { await lbDB.put('files', blob, id); } catch(e){}
+    prog && prog(1); return;
+  }
+  const buf = new Uint8Array(await blob.arrayBuffer()), n = Math.ceil(buf.length / LB_BS);
+  await lbClearFsPdf(id);
   for(let i = 0; i < n; i += 4){
     const b = fs.batch();
     for(let j = i; j < Math.min(n, i + 4); j++) b.set(ref.collection('pdf').doc(String(j).padStart(4, '0')), {i:j, b64:lbB64(buf.subarray(j * LB_BS, (j + 1) * LB_BS))});
     await b.commit(); prog && prog(Math.min(1, (i + 4) / n));
   }
-  await ref.update({hasPdf:true, size:buf.length, pdfChunks:n});
-  const bk = LIB.books.find(x => x.id === id); if(bk){ bk.hasPdf = true; bk.size = buf.length; }
+  await ref.update({hasPdf:true, size:buf.length, pdfChunks:n, store:''});
+  const bk = LIB.books.find(x => x.id === id); if(bk){ bk.hasPdf = true; bk.size = buf.length; bk.store = ''; }
   try { await lbDB.put('files', blob, id); } catch(e){}
 }
 async function lbB64Part(t){                                          // decodificación nativa (mucho más rápida que letra por letra en el celular)
@@ -165,6 +209,7 @@ async function lbGetPdf(id, onProg){
   try { const f = await lbDB.get('files', id); if(f) return f; } catch(e){}
   const bk = LIB.books.find(x => x.id === id);
   if(!bk || !bk.hasPdf) return null;
+  if(bk.store === 'gh'){ const g = await lbGhGet(id, bk, onProg); try { await lbDB.put('files', g, id); } catch(e){} return g; }
   const col = fs.collection('library').doc(id).collection('pdf'), total = bk.pdfChunks || 0;
   let parts = [];
   if(total){                                                           // se conoce la cantidad de partes: se piden de a 4 en paralelo, con progreso
@@ -191,7 +236,7 @@ async function lbDownload(id, btn){
 }
 async function lbUploadFile(id, f){
   const bk = LIB.books.find(x => x.id === id); if(!bk || !f) return false;
-  if(f.size > LB_MAXPDF){ alert('“' + f.name + '” pesa más de 20 MB y no entra en la nube gratis. Podés comprimirlo (por ejemplo con ilovepdf.com) y volver a intentar.'); return false; }
+  if(f.size > LB_MAXBOOK){ alert('“' + f.name + '” pesa más de ' + Math.round(LB_MAXBOOK / 1048576) + ' MB y no entra en la nube gratis. Podés comprimirlo (por ejemplo con ilovepdf.com) y volver a intentar.'); return false; }
   try {
     const pdfjs = await lbPdf(), d = await pdfjs.getDocument({data:new Uint8Array(await f.arrayBuffer())}).promise, n = bk.npages || (bk.pages || []).length;
     if(n && d.numPages !== n && !confirm('Ese PDF tiene ' + d.numPages + ' páginas y “' + bk.title + '” tiene ' + n + '. Si no es el mismo archivo, la búsqueda mostraría páginas equivocadas. ¿Lo subís igual?')) return false;
@@ -225,6 +270,21 @@ async function lbUploadAll(){
   }
   lbProgEnd();
   LIB.note = (ok ? 'Se subieron ' + ok + ' PDF a la nube. ' : '') + (miss.length ? 'Estos no están en este navegador (tocá “☁️ Guardar PDF” en cada uno y elegí el archivo): ' + miss.join('; ') + '.' : '');
+  renderLib();
+}
+
+async function lbMoveAll(){                                          // pasa los PDF que están en Firestore al repositorio privado, de a uno
+  const pend = LIB.books.filter(b => b.hasPdf && b.store !== 'gh'); let ok = 0; const bad = [];
+  for(const b of pend){
+    try {
+      lbProg('Moviendo “' + b.title + '” (' + (ok + bad.length + 1) + ' de ' + pend.length + ')…', 0);
+      const f = await lbGetPdf(b.id, p => lbProg('Leyendo “' + b.title + '”…', p * 0.3));
+      if(!f) throw new Error('sin PDF');
+      await lbStorePdf(b.id, f, p => lbProg('Moviendo “' + b.title + '” (' + (ok + bad.length + 1) + ' de ' + pend.length + ')…', 0.3 + p * 0.7)); ok++;
+    } catch(e){ console.error(e); bad.push(b.title); }
+  }
+  lbProgEnd();
+  LIB.note = (ok ? 'Se movieron ' + ok + ' PDF al repositorio privado y se liberó ese espacio en Firebase. ' : '') + (bad.length ? 'No se pudieron mover (siguen en Firebase, podés reintentar): ' + bad.join('; ') + '.' : '');
   renderLib();
 }
 
@@ -295,7 +355,7 @@ async function lbAddFile(file){
   try { await lbDB.put('books', {id, updated:now, pages:texts}); await lbDB.put('files', file, id); } catch(e){ console.warn('No se pudo guardar el PDF en este navegador', e); }
   LIB.books.unshift({id, title, editorial, updated:now, created:now, npages:n, ocr, pages:texts, hasPdf:false});
   let cloud = false;
-  if(file.size <= LB_MAXPDF){ try { await lbStorePdf(id, file, p => lbProg('Guardando el PDF de “' + title + '” en la nube…', 0.95 + p * 0.05)); cloud = true; } catch(e){ console.error(e); } }
+  if(file.size <= LB_MAXBOOK){ try { await lbStorePdf(id, file, p => lbProg('Guardando el PDF de “' + title + '” en la nube…', 0.95 + p * 0.05)); cloud = true; } catch(e){ console.error(e); } }
   LIB.seen && LIB.seen.delete(id); lbIndex();
   return {title, n, chars, ocr, cloud, big:file.size > LB_MAXPDF};
 }
@@ -475,6 +535,7 @@ function renderLib(){
   ${typeof shelfHTML === 'function' ? shelfHTML() : ''}
   <details class="lb-docsbox lib-ui"><summary class="lb-h">Documentos (${LIB.books.length})</summary>
   ${!RO && LIB.books.some(b => !b.hasPdf) ? `<div class="lb-note lib-ui"><b>${LIB.books.filter(b => !b.hasPdf).length} documento(s) no tienen el PDF original en la nube</b>, por eso solo se ven desde el navegador donde los cargaste. Tocá “☁️ Subir PDF” en cada uno (si no está en este navegador te pide elegir el archivo), o <button class="btn soft" id="lb-upall">Subir todos los que pueda</button></div>` : ''}
+  ${!RO && lbProxy() && LIB.books.some(b => b.hasPdf && b.store !== 'gh') ? `<div class="lb-note lib-ui"><b>${LIB.books.filter(b => b.hasPdf && b.store !== 'gh').length} PDF todavía ocupan lugar en Firebase.</b> <button class="btn soft" id="lb-moveall">Mover al repositorio privado</button></div>` : ''}
   <div class="lb-docs lib-ui">${LIB.books.length ? LIB.books.map(b => `<div class="lb-doc"><div class="lb-dt"><b>${esc(b.title)}</b><div class="lb-meta">${b.npages || (b.pages || []).length} páginas${b.ocr ? ' · OCR' : ''}${b.hasPdf ? '' : ' · PDF sin subir a la nube'}</div></div><div class="lb-da"><button class="btn soft" data-open="${b.id}">Ver</button> ${b.hasPdf ? `<button class="btn soft" data-dl="${b.id}">⬇ Descargar</button>` : (RO ? '' : `<button class="btn" data-up="${b.id}">☁️ Subir PDF</button>`)}${RO ? '' : ` <button class="ib" data-ren="${b.id}" title="Cambiar nombre">✏️</button> <button class="ib" data-del="${b.id}" title="Borrar">🗑</button>`}</div></div>`).join('') : `<div class="empty"><div class="big">${RO ? 'Todavía no hay documentos' : 'Todavía no cargaste documentos'}</div>${RO ? '' : 'Tocá “Agregar PDF” para subir tus libros, guías y apuntes.'}</div>`}</div></details>
   ${RO ? '' : '<details class="gd-box lib-ui" id="lb-sharebox"><summary><b>👥 Compartir la biblioteca (solo lectura)</b></summary><div id="lb-share"><p class="note">Cargando…</p></div></details>'}
   <div class="sheet sheet-lib" id="lb-print"></div>`;
@@ -487,6 +548,7 @@ function renderLib(){
     document.querySelectorAll('[data-up]').forEach(b => b.onclick = () => lbUploadLocal(b.dataset.up));
     lbShareRender();
     const ua = document.getElementById('lb-upall'); if(ua) ua.onclick = lbUploadAll;
+    const ma = document.getElementById('lb-moveall'); if(ma) ma.onclick = lbMoveAll;
   }
   const go = async () => {
     LIB.q.topic = document.getElementById('lb-topic').value; LIB.q.text = document.getElementById('lb-q').value;
@@ -604,6 +666,7 @@ async function lbDelete(id){
   const b = LIB.books.find(x => x.id === id); if(!b) return;
   if(!confirm('¿Borrar “' + b.title + '” de tu biblioteca? Se elimina el texto y el PDF guardados, y las personas con acceso dejan de verlo. No se puede deshacer.')) return;
   try {
+    if(b.store === 'gh'){ try { await lbGhDel(id); } catch(e){ console.warn(e); if(!confirm('No se pudo borrar el PDF del repositorio privado (' + e.message + '). ¿Borrar igual el resto?')) return; } }
     const ref = fs.collection('library').doc(id), cs = await ref.collection('chunks').get();
     for(let a = 0; a < cs.docs.length; a += 400){ const bt = fs.batch(); cs.docs.slice(a, a + 400).forEach(d => bt.delete(d.ref)); await bt.commit(); }
     const ps = await ref.collection('pdf').get();

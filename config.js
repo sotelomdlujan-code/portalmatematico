@@ -8,3 +8,7 @@ window.FIREBASE_CONFIG = {
 
 // Correo de la profesora (el mismo que figura en firestore.rules).
 window.TEACHER_EMAIL = "sotelo.m.d.lujan@gmail.com";
+
+// Dirección del Worker de Cloudflare que guarda los PDF de la biblioteca en un repositorio PRIVADO de GitHub
+// (ver GUIA-BIBLIOTECA-PRIVADA.md). Si queda vacío ("") los PDF se guardan en Firebase como hasta ahora.
+window.PDF_PROXY = "https://biblioteca.huskystree.workers.dev";
