@@ -125,14 +125,17 @@
 .esc-b{font:700 .88rem var(--fb);padding:9px 14px;min-height:40px;border-radius:12px;border:2px solid #4a2410;background:#fff4de;color:#4a2410;cursor:pointer;box-shadow:0 2px 0 #4a2410}
 .esc-b.ok{background:#c7f2a7}.esc-b:disabled{opacity:.55;cursor:default}
 .esc-chip{margin-left:auto;font:700 .85rem var(--fb);color:#fff4de;background:rgba(0,0,0,.28);padding:4px 10px;border-radius:99px}
-.esc-in{flex:1 1 180px;min-width:0;padding:9px 10px;border-radius:10px;border:2px solid #4a2410;font:600 .9rem var(--fb);background:#fffdf5;color:#3b2a1a}
+.esc .esc-in,.esc .esc-in:focus{flex:1 1 180px;min-width:0;width:auto;padding:9px 10px;border-radius:10px;border:2px solid #4a2410;font:600 .9rem var(--fb);background:#fffdf5;color:#3b2a1a;caret-color:#3b2a1a;box-shadow:none}
 .esc-mini{display:block;margin:0 auto 14px;padding:8px 16px;border-radius:99px;border:2px solid var(--bd);background:var(--sf);color:var(--tx);font:700 .85rem var(--fb);cursor:pointer}
 
 .esc-ask{display:flex;gap:8px;padding:0 10px 10px;background:#8c4c22}
 .esc-aula .esc-ask{background:#954218}.esc-biblioteca .esc-ask{background:#703717}
 .esc-ask[hidden]{display:none}
-.esc-q{flex:1;min-width:0;padding:11px 12px;border-radius:12px;border:2px solid #4a2410;font:600 .95rem var(--fb);background:#fffdf5;color:#3b2a1a}
-.esc-q:disabled{opacity:.8}
+/* colores fijos (también con el tema oscuro y al hacer foco): la regla general de la app para input:focus les ponía fondo oscuro */
+.esc .esc-q,.esc .esc-q:focus{flex:1;min-width:0;width:auto;padding:11px 12px;border-radius:12px;border:2px solid #4a2410;font:600 .95rem var(--fb);background:#fffdf5;color:#3b2a1a;caret-color:#3b2a1a;box-shadow:none}
+.esc .esc-q:focus,.esc .esc-in:focus{outline:3px solid #ffd27a;outline-offset:1px}
+.esc .esc-q::placeholder,.esc .esc-in::placeholder{color:#8a7560;opacity:1}
+.esc .esc-q:disabled{opacity:.85;color:#6b5844}
 .esc-send{min-width:48px;border-radius:12px;border:2px solid #4a2410;background:#c7f2a7;color:#4a2410;font-size:1.1rem;cursor:pointer;box-shadow:0 2px 0 #4a2410}
 .esc-send:disabled{opacity:.55;cursor:default}
 .esc.esc-open{border-radius:20px 20px 0 0;border-bottom-width:0;margin-bottom:0}
