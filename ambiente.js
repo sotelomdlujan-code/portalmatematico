@@ -5,7 +5,8 @@
 (function(){
   'use strict';
   const IMG = {normal:'img/profe-normal.webp', festejo:'img/profe-festejo.webp', error:'img/profe-error.webp'};
-  const KIOSCO = ['lib','guides','tutor'];                       // pestañas que van en el kiosco; el resto, en el aula
+  const BIBLIO = ['lib','guides'];                               // pestañas que van en la biblioteca
+  const KIOSCO = ['tutor'];                                      // y en el kiosco; el resto, en el aula
   const SALUDO = {
     tasks:'¡Hola! Acá ves tus tareas y cuándo se entregan 🌟', materials:'Acá está el material para estudiar 📚', consultas:'¿Tenés una duda? Escribila y te respondo 💬',
     plans:'Organicemos las clases 📘', exams:'Preparemos las evaluaciones ✏️', gen:'Armá tu examen con ejercicios al azar 🧮',
@@ -23,7 +24,7 @@
   const ayer = () => new Date(Date.now() - 864e5).toLocaleDateString('en-CA');
   const hash = t => { let h = 2166136261; for(const c of String(t)){ h ^= c.charCodeAt(0); h = Math.imul(h, 16777619); } return h >>> 0; };
   const semilla = n => { let a = n >>> 0; return () => { a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; };
-  const modo = () => KIOSCO.includes(document.body.dataset.tab) ? 'kiosco' : 'aula';
+  const modo = () => { const t = document.body.dataset.tab; return BIBLIO.includes(t) ? 'biblioteca' : KIOSCO.includes(t) ? 'kiosco' : 'aula'; };
   const st = {root:null, mini:null, key:'', tab:'', ej:null, sug:null, timer:null, bt:null, poll:null};
 
   /* ---------- datos de la app (se leen de app.js al momento de usarlos) ---------- */
@@ -87,16 +88,22 @@
 .esc[hidden],.esc-mini[hidden]{display:none}
 .esc-vista{position:relative;overflow:hidden;background-repeat:no-repeat;background-size:100% auto;background-position:top center;background-color:#c9a77a}
 .esc-aula .esc-vista{background-image:url(img/aula.webp);aspect-ratio:752/830}
-.esc-kiosco .esc-vista{background-image:url(img/biblioteca.webp),url(img/kiosco.webp);aspect-ratio:768/810}   /* si falta biblioteca.webp se ve el kiosco */
+.esc-kiosco .esc-vista{background-image:url(img/kiosco.webp);aspect-ratio:768/810}
+.esc-biblioteca .esc-vista,.esc-biblioteca .esc-fr{background-image:url(img/biblioteca.webp);aspect-ratio:768/925}
+.esc-fr{display:none;position:absolute;inset:0;z-index:2;pointer-events:none;background-repeat:no-repeat;background-size:100% auto;background-position:top center}
+.esc-biblioteca .esc-fr{display:block;clip-path:inset(87% 0 0 0)}   /* el escritorio se dibuja por delante de la Profe: queda parada detrás del mostrador */
 .esc-pz{position:absolute;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;overflow:hidden;color:#f6f2e4;font:600 13px/1.25 var(--fd);font-size:3.7cqw;text-shadow:0 1px 0 rgba(0,0,0,.3);padding:1.2cqw}
 .esc-aula .esc-pz{left:19.9%;top:29.5%;width:64.5%;height:32.5%}
 .esc-kiosco .esc-pz{left:33.5%;top:39.6%;width:49.5%;height:21%;font-size:3cqw}
+.esc-biblioteca .esc-pz{left:35.9%;top:35.9%;width:29%;height:15.8%;font-size:2.9cqw;background:radial-gradient(ellipse at 40% 30%,#0a4a2d,#06361f);border-radius:3px}
+.esc-biblioteca .pz-t{display:none}
 .pz-t{font-size:.8em;color:#ffe28a;letter-spacing:.04em;margin-bottom:.3em}
 .pz-q{font-size:1.1em}.pz-q b{color:#9be7ff}
 .pz-a{margin-top:.35em;color:#ffe28a}
-.esc-kiosco .pz-q{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
-.esc-av{position:absolute;bottom:-1px;height:39%;width:auto;pointer-events:none;transform-origin:50% 100%;user-select:none}
+.esc-kiosco .pz-q,.esc-biblioteca .pz-q{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.esc-av{position:absolute;z-index:1;bottom:-1px;height:39%;width:auto;pointer-events:none;transform-origin:50% 100%;user-select:none}
 .esc-aula .esc-av{right:3%}.esc-kiosco .esc-av{left:2%}
+.esc-biblioteca .esc-av{left:37.8%;bottom:10.3%;height:36.5%}
 .av-festejo{animation:esc-salto .8s ease}.av-error{animation:esc-sacudir .5s ease}
 @keyframes esc-salto{0%,100%{transform:translateY(0)}30%{transform:translateY(-6%)}60%{transform:translateY(0)}80%{transform:translateY(-2%)}}
 @keyframes esc-sacudir{0%,100%{transform:translateX(0)}25%{transform:translateX(-2.5%)}75%{transform:translateX(2.5%)}}
@@ -105,14 +112,16 @@
 .esc-bub[hidden]{display:none}
 .esc-bub.pers{padding-right:26px}
 .esc-aula .esc-bub{left:3%;bottom:6%}.esc-kiosco .esc-bub{left:37%;bottom:5%;max-width:46%}
+.esc-biblioteca .esc-bub{left:2%;bottom:19%;max-width:33%}
 .esc-bub::after{content:"";position:absolute;width:12px;height:12px;background:#fffdf5;transform:rotate(45deg)}
-.esc-aula .esc-bub::after{right:-8px;bottom:14px;border-top:2px solid #3b2a1a;border-right:2px solid #3b2a1a}
+.esc-aula .esc-bub::after,.esc-biblioteca .esc-bub::after{right:-8px;bottom:14px;border-top:2px solid #3b2a1a;border-right:2px solid #3b2a1a}
 .esc-kiosco .esc-bub::after{left:-8px;bottom:14px;border-left:2px solid #3b2a1a;border-bottom:2px solid #3b2a1a}
 .esc-bx{position:absolute;top:1px;right:3px;border:0;background:none;color:#7a5a3a;font-size:14px;line-height:1;cursor:pointer;padding:4px}
 .esc-bub:not(.pers) .esc-bx{display:none}
 .esc-hide{position:absolute;top:6px;right:6px;z-index:4;width:30px;height:30px;border-radius:50%;border:0;background:rgba(0,0,0,.45);color:#fff;font-size:15px;cursor:pointer}
 .esc-bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:center;padding:10px;background:linear-gradient(#ac5e2b,#8c4c22)}
 .esc-aula .esc-bar{background:linear-gradient(#b24f1d,#954218)}
+.esc-biblioteca .esc-bar{background:linear-gradient(#8d4a22,#703717)}
 .esc-b{font:700 .88rem var(--fb);padding:9px 14px;min-height:40px;border-radius:12px;border:2px solid #4a2410;background:#fff4de;color:#4a2410;cursor:pointer;box-shadow:0 2px 0 #4a2410}
 .esc-b.ok{background:#c7f2a7}.esc-b:disabled{opacity:.55;cursor:default}
 .esc-chip{margin-left:auto;font:700 .85rem var(--fb);color:#fff4de;background:rgba(0,0,0,.28);padding:4px 10px;border-radius:99px}
@@ -125,7 +134,7 @@
   function build(){
     css();
     const root = document.createElement('section'); root.id = 'escena'; root.className = 'esc'; root.setAttribute('aria-label', 'La Profe Luján');
-    root.innerHTML = `<div class="esc-vista"><div class="esc-pz"></div><img class="esc-av" src="${IMG.normal}" alt="La Profe Luján" width="320" height="445" draggable="false">
+    root.innerHTML = `<div class="esc-vista"><div class="esc-pz"></div><img class="esc-av" src="${IMG.normal}" alt="La Profe Luján" width="320" height="445" draggable="false"><div class="esc-fr"></div>
       <div class="esc-bub" hidden><span class="esc-bt"></span><button type="button" class="esc-bx" aria-label="Cerrar el mensaje">✕</button></div>
       <button type="button" class="esc-hide" aria-label="Ocultar la escena" title="Ocultar">▾</button></div><div class="esc-bar"></div>`;
     const mini = document.createElement('button'); mini.type = 'button'; mini.id = 'escena-show'; mini.className = 'esc-mini'; mini.textContent = '🏫 Mostrar a la Profe'; mini.hidden = true;
@@ -201,12 +210,12 @@
   }
   function paint(){
     const m = modo(), i = info();
-    st.root.classList.toggle('esc-aula', m === 'aula'); st.root.classList.toggle('esc-kiosco', m === 'kiosco');
+    st.root.classList.toggle('esc-aula', m === 'aula'); st.root.classList.toggle('esc-kiosco', m === 'kiosco'); st.root.classList.toggle('esc-biblioteca', m === 'biblioteca');
     clearInterval(st.poll);
     if(m === 'aula'){ ejHoy(i); pizAula(); barAula(); }
     else {
       st.sug = st.sug || sugerir(false); pizKiosco();
-      if(!st.sug){ let n = 0; st.poll = setInterval(() => { if(++n > 40 || modo() !== 'kiosco'){ clearInterval(st.poll); return; } const s = sugerir(false); if(s){ clearInterval(st.poll); st.sug = s; pizKiosco(); } }, 1500); }
+      if(!st.sug){ let n = 0; st.poll = setInterval(() => { if(++n > 40 || modo() === 'aula'){ clearInterval(st.poll); return; } const s = sugerir(false); if(s){ clearInterval(st.poll); st.sug = s; pizKiosco(); } }, 1500); }
     }
     base();
   }
