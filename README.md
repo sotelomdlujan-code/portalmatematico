@@ -172,10 +172,49 @@ Entiende año, cantidad (total o por tema), temas, dificultad (fácil, media, di
 
 ## 🏫 Ambiente: aula, kiosco y la Profe Luján (versión 11)
 - **Carpeta `img/`** (5 imágenes WebP livianas): subila entera a GitHub junto con `ambiente.js`, `index.html`, `biblioteca.js`, `tutor.js` y `entregas.js`.
-- **Aula** (Planificaciones, Evaluaciones, Generar examen, Material, Tareas, Consultas) y **kiosco** (Biblioteca, Guías, Tutor IA). La escena aparece arriba de cada pestaña y se puede ocultar con la flechita ▾ (queda guardado).
+- **Aula** (Planificaciones, Evaluaciones, Generar examen, Material, Tareas, Consultas), **biblioteca de matemáticos** (Biblioteca y Guías: la Profe parada detrás del mostrador) y **kiosco** (Tutor IA). La escena aparece arriba de cada pestaña y se puede ocultar con la flechita ▾ (queda guardado).
 - **Pizarra del aula: ejercicio del día.** Sale del generador de exámenes, es el mismo para todos durante el día y cambia cada curso. Botones: *Ver respuesta* → *Me salió* / *No me salió* → *Otro ejercicio*. Suma una **racha 🔥** de días practicando.
 - **Mensaje de la Profe para el curso** (solo la profesora): en el aula, botón 💬 *Mensaje de la Profe*. El texto (hasta 160 caracteres) aparece en el globo de diálogo de los alumnos de ese curso, y cada alumno puede cerrarlo. Se guarda en el curso (campo `pizarra`); no hace falta cambiar las reglas.
-- **Pizarra del kiosco: página sugerida del día** de la biblioteca, con *Abrir esa página* y *Otra*.
+- **Pizarra de la biblioteca y del kiosco: página sugerida del día** de la biblioteca, con *Abrir esa página* y *Otra*.
 - **La Profe reacciona:** festeja al entregar una tarea, al ver una nota corregida, al guardar una nota, al encontrar resultados y al terminar una respuesta del tutor; pone cara de error si falla una entrega, si no hay resultados o si falla el tutor. Desde otro archivo: `AulaProfe.reaccionar('festejo' | 'error' | 'normal', 'texto', milisegundos)`.
-- Para cambiar qué pestañas van en el kiosco, editá la lista `KIOSCO` al principio de `ambiente.js`.
+- Para cambiar qué pestañas van en cada escena, editá las listas `BIBLIO` y `KIOSCO` al principio de `ambiente.js`.
 
+## 💛 La Profe Luján con IA (versión 12)
+- **Campo “Preguntale a la Profe”** debajo de la escena, en el aula y en la biblioteca (en la pestaña Tutor IA no aparece, porque ya tiene su propio chat). La charla se abre abajo de la escena, recuerda los últimos intercambios, muestra fórmulas, gráficos y los cálculos hechos con la calculadora, y tiene **🧹 Nueva charla**.
+- **Personalidad:** cálida, paciente y cariñosa; habla en voseo, reconoce el esfuerzo, normaliza el error y razona en voz alta explicando el porqué de cada paso. Solo Matemática y ayuda para estudiarla. También se aplicó al Tutor IA.
+- **En la biblioteca** (profesora y colegas habilitados): responde con los libros cargados, citando libro y página, y puede mirar las páginas como imagen (usa la casilla del Tutor IA).
+- **Alumnos:** la Profe los acompaña con pistas y, si ya lo intentaron o se traban, muestra la resolución completa razonada. No tiene acceso a los libros. Límite de 30 preguntas por día y por dispositivo. En `profe.js` se pueden cambiar `GUIA_ALUMNO` (pistas o respuesta completa) y `MAX_ALUMNO_DIA`.
+- **Activar para alumnos (solo la profesora):** en el aula, botón **🤖 IA para alumnos** → Activar. Copia tu clave del Tutor IA en `config/tutor_alumnos`; al **Desactivar** la clave se borra de ahí.
+- ⚠️ **Seguridad:** mientras esté activado, esa clave queda legible para cualquiera que entre a la página (no hay servidor intermedio). Conviene usar una clave aparte solo para esto y **restringirla a tu sitio** (referrer HTTP) en Google AI Studio / Google Cloud, y vigilar el uso.
+- **Para actualizar:** subí `profe.js` (nuevo), `ambiente.js`, `tutor.js` e `index.html`, y **republicá `firestore.rules`** (agrega `config/tutor_alumnos`). Recargá con Ctrl + F5.
+
+## 📖 Abrir las páginas que usa el tutor (versión 13)
+- En el **Tutor IA** y en la **charla con la Profe** (biblioteca), las páginas consultadas aparecen como **botones**. Al tocar uno se abre el libro justo en esa página (desde el visor también está “➕ A la guía”), y el **➕** de al lado la agrega directo a la guía que estás armando.
+- Si el libro está cortado en partes, el botón muestra el número de página del libro completo y abre la página correcta dentro de la parte.
+- Se actualiza con `tutor.js`, `profe.js` y `ambiente.js` (recargá con Ctrl + F5).
+
+
+## 🗄️ Estantería por editoriales (versión 14)
+- En **Biblioteca** aparece la **Estantería por editoriales**: cada documento es un libro con su lomo, separados en estantes con su cartel (Springer, Pearson / Addison-Wesley, McGraw-Hill Education, Reverté / Limusa). Los que no tienen editorial quedan en **Sin clasificar**.
+- **Tocá un libro** para verlo, descargarlo o (la profesora) **cambiarle la editorial**. Ahí mismo se puede crear **otra editorial** y aparece un estante nuevo. En la compu también se puede **arrastrar** el lomo a otro estante.
+- Al **agregar un PDF**, la editorial se detecta sola leyendo el título y las primeras páginas. Para los libros que ya tenías cargados, usá el botón **🏷 Detectar la editorial…**. Si no la reconoce, movelos a mano.
+- El botón **🔍** del cartel de cada estante hace que la búsqueda mire **solo esa editorial**.
+- Las personas con acceso de solo lectura ven la estantería, pero no pueden mover libros.
+- Para actualizar: subí `estanteria.js` (nuevo), `biblioteca.js` e `index.html` (versión `?v=14`) y recargá con Ctrl + F5. **No cambian las reglas de Firebase.**
+
+### ✏️ Editar los estantes (versión 15)
+- En la estantería, tocá **✏️ Editar estantes** (solo la profesora). En cada cartel aparecen **◀ ▶** (mover), **✏️** (cambiar el nombre) y **🗑** (quitar). **➕ Nuevo estante** crea uno nuevo. Al terminar, tocá **✔ Listo**.
+- Al **renombrar** un estante, sus libros se pasan solos al nombre nuevo. Al **quitar** un estante, los libros **no se borran**: pasan a “Sin clasificar”.
+- La lista y el orden de los estantes se guardan en la base de datos (documento `library/_estantes`), así que se ven igual desde cualquier dispositivo. **No cambian las reglas de Firebase.**
+- La detección automática de editorial usa el nombre de cada estante (por ejemplo, un estante “Editorial Kapelusz” reconoce libros que mencionen “Kapelusz” en sus primeras páginas).
+- Para actualizar: subí `estanteria.js` (`?v=2`) y `biblioteca.js` (`?v=15`) e `index.html`, y recargá con Ctrl + F5.
+
+## 🤖 Profe Luján con IA: fotos, figuras y 8 expresiones (profe.js v2 · ambiente.js v3)
+- **Fotos**: en el campo de pregunta de la Profe hay un botón **📷**. Se pueden adjuntar hasta **3 fotos** (de la carpeta, un ejercicio, un gráfico), ver las miniaturas, quitarlas con la ✕ y enviar con o sin texto. La Profe primero cuenta qué ve en la foto, y si es la resolución de un alumno, marca lo que hizo bien antes de corregir. En el celular, el botón permite sacar la foto en el momento o elegirla de la galería.
+- **Figuras geométricas**: cuando ayuda a entender, la Profe dibuja triángulos, Pitágoras, cuadriláteros, cuerpos y ángulos. Se limpian antes de mostrarse (se eliminan scripts y enlaces). Los gráficos de funciones siguen saliendo con la herramienta *graficar*.
+- **Expresiones** (en `img/`): `normal`, `festejo`, `error` (las de siempre) y las nuevas `sorpresa`, `pensando`, `risa`, `bien`, `ok`.
+  - 📷 al enviar una foto → *sorpresa* y enseguida *pensando*; al enviar solo texto → *pensando* (brazos cruzados) hasta que responde.
+  - Al responder → *bien* u *ok* (pulgar arriba, al azar). Al llegar al límite diario de un alumno → *sorpresa*.
+  - Ejercicio del día resuelto → *festejo*, *risa* o *bien*. Mensaje publicado, IA de alumnos activada o desactivada, página elegida → *ok* / *risa* / *bien*. Si falla algo → *error*.
+  - Desde cualquier archivo: `AulaProfe.reaccionar('risa', 'texto', 2000)`, o con una lista para que elija al azar: `AulaProfe.reaccionar(['bien', 'ok'], '¡Listo!')`. Para cambiar qué cara va en cada momento se edita solo `ambiente.js`.
+- Para actualizar: subí `profe.js`, `ambiente.js`, `index.html` y las 5 imágenes nuevas de `img/` (`profe-sorpresa`, `profe-pensando`, `profe-risa`, `profe-bien`, `profe-ok`, todas `.webp`). **No cambian las reglas de Firebase.** Recargá con Ctrl + F5.

@@ -1,10 +1,18 @@
-/* Ambiente de la app: escena de aula (cursos) y de kiosco (biblioteca), la Profe Luján con sus 3 expresiones
+/* Ambiente de la app: escena de aula (cursos) y de kiosco (biblioteca), la Profe Luján con sus 8 expresiones
    y los widgets: ejercicio del día en la pizarra, racha, mensaje de la Profe para el curso y página sugerida.
    Se coloca solo arriba de cada pestaña; no hace falta tocar el resto de la app. Para reaccionar desde otro archivo:
-   AulaProfe.reaccionar('festejo' | 'error' | 'normal', 'texto opcional', milisegundos) */
+   AulaProfe.reaccionar('festejo' | 'risa' | 'bien' | 'ok' | 'sorpresa' | 'pensando' | 'error' | 'normal', 'texto opcional', milisegundos)
+   También acepta una lista y elige una al azar: AulaProfe.reaccionar(['bien', 'ok'], '¡Listo!') */
 (function(){
   'use strict';
-  const IMG = {normal:'img/profe-normal.webp', festejo:'img/profe-festejo.webp', error:'img/profe-error.webp'};
+  const IMG = {normal:'img/profe-normal.webp', festejo:'img/profe-festejo.webp', error:'img/profe-error.webp',
+    sorpresa:'img/profe-sorpresa.webp',      // manos en las mejillas: llega una foto, se terminó el cupo del día
+    pensando:'img/profe-pensando.webp',      // brazos cruzados y sonrisa: mientras piensa la respuesta
+    risa:'img/profe-risa.webp',              // carcajada: acertaste el ejercicio del día
+    bien:'img/profe-bien.webp',              // pulgar arriba (ojos cerrados): respondió bien
+    ok:'img/profe-ok.webp'};                 // pulgar arriba (ojos abiertos): listo, guardado
+  const MAXI = 3;                                                // fotos por consulta
+  const azar = a => Array.isArray(a) ? a[Math.floor(Math.random() * a.length)] : a;
   const BIBLIO = ['lib','guides'];                               // pestañas que van en la biblioteca
   const KIOSCO = ['tutor'];                                      // y en el kiosco; el resto, en el aula
   const SALUDO = {
@@ -25,7 +33,7 @@
   const hash = t => { let h = 2166136261; for(const c of String(t)){ h ^= c.charCodeAt(0); h = Math.imul(h, 16777619); } return h >>> 0; };
   const semilla = n => { let a = n >>> 0; return () => { a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; };
   const modo = () => { const t = document.body.dataset.tab; return BIBLIO.includes(t) ? 'biblioteca' : KIOSCO.includes(t) ? 'kiosco' : 'aula'; };
-  const st = {root:null, mini:null, chat:null, ia:null, iaT:0, iaK:'', busy:false, key:'', tab:'', ej:null, sug:null, timer:null, bt:null, poll:null};
+  const st = {root:null, mini:null, chat:null, ia:null, iaT:0, iaK:'', busy:false, imgs:[], t2:null, key:'', tab:'', ej:null, sug:null, timer:null, bt:null, poll:null};
 
   /* ---------- datos de la app (se leen de app.js al momento de usarlos) ---------- */
   function info(){
@@ -104,7 +112,7 @@
 .esc-av{position:absolute;z-index:1;bottom:-1px;height:39%;width:auto;pointer-events:none;transform-origin:50% 100%;user-select:none}
 .esc-aula .esc-av{right:3%}.esc-kiosco .esc-av{left:2%}
 .esc-biblioteca .esc-av{left:37.8%;bottom:10.3%;height:36.5%}
-.av-festejo{animation:esc-salto .8s ease}.av-error{animation:esc-sacudir .5s ease}
+.av-festejo,.av-risa,.av-bien,.av-ok{animation:esc-salto .8s ease}.av-error,.av-sorpresa{animation:esc-sacudir .5s ease}
 @keyframes esc-salto{0%,100%{transform:translateY(0)}30%{transform:translateY(-6%)}60%{transform:translateY(0)}80%{transform:translateY(-2%)}}
 @keyframes esc-sacudir{0%,100%{transform:translateX(0)}25%{transform:translateX(-2.5%)}75%{transform:translateX(2.5%)}}
 @media (prefers-reduced-motion:reduce){.esc-av{animation:none!important}}
@@ -153,6 +161,17 @@
 .esc-mav{width:34px;height:34px;border-radius:50%;object-fit:cover;object-position:50% 12%;background:#f3d9b8;border:2px solid #4a2410;flex:none}
 .esc-note{font-size:.8rem;color:var(--mu);margin-top:6px;white-space:normal}
 .esc-fig{background:#fff;border-radius:10px;padding:6px;margin:8px 0;border:1px solid var(--bd);white-space:normal}
+.esc-fig svg{display:block;width:100%;height:auto}
+.esc-ask{flex-wrap:wrap}
+.esc-att{min-width:48px;border-radius:12px;border:2px solid #4a2410;background:#fff4de;color:#4a2410;font-size:1.15rem;cursor:pointer;box-shadow:0 2px 0 #4a2410}
+.esc-att:disabled{opacity:.55;cursor:default}
+.esc-th{flex:1 1 100%;display:flex;gap:10px;flex-wrap:wrap;padding-top:2px}
+.esc-th[hidden]{display:none}
+.esc-t1{position:relative;width:58px;height:58px;border-radius:10px;border:2px solid #4a2410;background:#fffdf5}
+.esc-t1 img{display:block;width:100%;height:100%;object-fit:cover;border-radius:8px}
+.esc-t1 button{position:absolute;top:-9px;right:-9px;width:24px;height:24px;padding:0;border-radius:50%;border:2px solid #4a2410;background:#fff4de;color:#4a2410;font-size:11px;line-height:1;cursor:pointer}
+.esc-ths{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.esc-ths img{width:88px;height:88px;object-fit:cover;border-radius:8px;border:1px solid var(--bd)}
 .esc-warn{flex-basis:100%;font:600 .78rem/1.3 var(--fb);color:#fff4de;text-align:center}
 .esc-info{font:700 .88rem var(--fb);color:#fff4de}
 @media print{.esc,.esc-mini,.esc-chat{display:none!important}}`;
@@ -165,11 +184,14 @@
     root.innerHTML = `<div class="esc-vista"><div class="esc-pz"></div><img class="esc-av" src="${IMG.normal}" alt="La Profe Luján" width="320" height="445" draggable="false"><div class="esc-fr"></div>
       <div class="esc-bub" hidden><span class="esc-bt"></span><button type="button" class="esc-bx" aria-label="Cerrar el mensaje">✕</button></div>
       <button type="button" class="esc-hide" aria-label="Ocultar la escena" title="Ocultar">▾</button></div><div class="esc-bar"></div>
-      <div class="esc-ask" hidden><input class="esc-q" type="text" maxlength="700" placeholder="Preguntale a la Profe…" aria-label="Preguntale a la Profe" autocomplete="off"><button type="button" class="esc-send" aria-label="Enviar la pregunta">➤</button></div>`;
+      <div class="esc-ask" hidden><div class="esc-th" hidden></div><button type="button" class="esc-att" aria-label="Adjuntar una foto" title="Adjuntar una foto de tu carpeta o ejercicio">📷</button><input class="esc-q" type="text" maxlength="700" placeholder="Preguntale a la Profe…" aria-label="Preguntale a la Profe" autocomplete="off"><button type="button" class="esc-send" aria-label="Enviar la pregunta">➤</button><input class="esc-file" type="file" accept="image/*" multiple hidden></div>`;
     const chat = document.createElement('section'); chat.id = 'escena-chat'; chat.className = 'esc-chat'; chat.hidden = true; chat.setAttribute('aria-label', 'Charla con la Profe');
     chat.innerHTML = `<div class="esc-chat-h"><b>💬 Charla con la Profe</b><span><button type="button" class="esc-lnk" data-c="nueva">🧹 Nueva charla</button><button type="button" class="esc-lnk" data-c="min" aria-label="Minimizar la charla">▾</button></span></div><div class="esc-msgs" aria-live="polite"></div>`;
     root.querySelector('.esc-q').onkeydown = ev => { if(ev.key === 'Enter' && !ev.isComposing){ ev.preventDefault(); enviar(); } };
     root.querySelector('.esc-send').onclick = () => enviar();
+    root.querySelector('.esc-att').onclick = () => { if(!st.busy) root.querySelector('.esc-file').click(); };
+    root.querySelector('.esc-file').onchange = async ev => { const fl = [...ev.target.files]; ev.target.value = ''; await addFotos(fl); };
+    root.querySelector('.esc-th').onclick = ev => { const b = ev.target.closest('[data-x]'); if(b && !st.busy){ st.imgs.splice(+b.dataset.x, 1); pintaFotos(); } };
     chat.onclick = ev => {
       const b = ev.target.closest('[data-c]'); if(!b) return;
       if(b.dataset.c === 'nueva'){ if(st.busy) return; if(window.ProfeIA) ProfeIA.reiniciar(); chat.querySelector('.esc-msgs').innerHTML = ''; chat.hidden = true; sincChat(); }
@@ -183,7 +205,7 @@
     root.querySelector('.esc-bar').onclick = ev => { const b = ev.target.closest('[data-a]'); if(b && ACC[b.dataset.a]) ACC[b.dataset.a](b); };
     root.querySelector('.esc-bar').onkeydown = ev => { if(ev.key === 'Enter' && ev.target.classList.contains('esc-in')) ACC.gm(); };
     st.root = root; st.mini = mini;
-    setTimeout(() => { ['festejo', 'error'].forEach(k => { const im = new Image(); im.src = IMG[k]; }); }, 1500);   // se precargan para que el cambio de cara sea instantáneo
+    setTimeout(() => { Object.keys(IMG).forEach(k => { if(k !== 'normal'){ const im = new Image(); im.src = IMG[k]; } }); }, 1500);   // se precargan para que el cambio de cara sea instantáneo
   }
   const aplicarVisible = () => { const off = lsGet('aula_escena') === 'off'; st.root.hidden = off; st.mini.hidden = !off; st.chat.hidden = off || !qc('.esc-msgs').children.length; sincChat(); };
   const q = s => st.root.querySelector(s);
@@ -193,8 +215,9 @@
   /* ---------- avatar y globo de diálogo ---------- */
   function setAv(estado){
     const im = q('.esc-av'); if(!im) return;
-    im.classList.remove('av-festejo', 'av-error'); void im.offsetWidth;
-    im.src = IMG[estado] || IMG.normal; if(estado !== 'normal') im.classList.add('av-' + estado);
+    [...im.classList].forEach(c => { if(c.startsWith('av-')) im.classList.remove(c); }); void im.offsetWidth;
+    estado = IMG[estado] ? estado : 'normal';
+    im.src = IMG[estado]; if(estado !== 'normal') im.classList.add('av-' + estado);
   }
   function showBubble(texto, ms, pers){
     const b = q('.esc-bub'); q('.esc-bt').textContent = texto; b.classList.toggle('pers', !!pers); b.hidden = false;
@@ -206,7 +229,7 @@
     if(modo() === 'aula' && i.aviso && ssGet('aula_av_x') !== String(hash(i.aviso))) showBubble(i.aviso, 0, true); else hideBubble();
   }
   function reaccionar(estado, texto, ms){
-    if(!st.root) return; ms = ms || 3200;
+    if(!st.root) return; ms = ms || 3200; estado = azar(estado);
     setAv(estado); if(texto) showBubble(texto, ms, false);
     clearTimeout(st.timer); st.timer = setTimeout(() => { setAv('normal'); base(); }, ms);
   }
@@ -214,7 +237,7 @@
   /* ---------- widgets ---------- */
   const ACC = {
     ver(){ st.ej.shown = true; pizAula(); barAula(); },
-    si(){ st.ej.done = true; const n = sumarRacha(); pizAula(); barAula(); reaccionar('festejo', n > 1 ? '¡Muy bien! ' + n + ' días seguidos 🔥' : '¡Muy bien! Eso es practicar 💪'); },
+    si(){ st.ej.done = true; const n = sumarRacha(); pizAula(); barAula(); reaccionar(['festejo', 'risa', 'bien'], n > 1 ? '¡Muy bien! ' + n + ' días seguidos 🔥' : '¡Muy bien! Eso es practicar 💪'); },
     no(){ st.ej.done = true; pizAula(); barAula(); reaccionar('error', 'No pasa nada: mirá cómo se hace y probá con otro 💪', 4200); },
     otro(){ st.ej = {dia:st.ej.dia, ...ejercicio(null), shown:false, done:false, extra:true}; pizAula(); barAula(); },
     msg(){ const i = info(); q('.esc-bar').innerHTML = `<input class="esc-in" maxlength="160" placeholder="Mensaje de la Profe para tu curso" aria-label="Mensaje para el curso" value="${E(i.aviso)}"><button type="button" class="esc-b ok" data-a="gm">Guardar</button><button type="button" class="esc-b" data-a="cm">Cancelar</button>`; q('.esc-in').focus(); },
@@ -224,7 +247,7 @@
       try{
         await fs.collection('courses').doc(i.cid).update({pizarra:txt});
         const c = courses.find(x => x.id === i.cid); if(c) c.pizarra = txt;
-        ssSet('aula_av_x', ''); barAula(); base(); reaccionar('festejo', txt ? '¡Mensaje publicado!' : 'Mensaje borrado', 1800);
+        ssSet('aula_av_x', ''); barAula(); base(); reaccionar('ok', txt ? '¡Mensaje publicado!' : 'Mensaje borrado', 1800);
       }catch(e){ console.warn(e); reaccionar('error', 'No se pudo guardar. Probá de nuevo.', 2500); }
     },
     async iaal(){
@@ -236,10 +259,10 @@
     async iaon(){
       if(!confirm('Se va a compartir tu clave de IA con las personas que entren a tus cursos. ¿Querés activarlo?')) return;
       const r = await ProfeIA.activarAlumnos(true); barAula();
-      reaccionar(r.ok ? 'festejo' : 'error', r.ok ? '¡Listo! Tus alumnos ya pueden preguntarme 💛' : r.error, 3800);
+      reaccionar(r.ok ? ['risa', 'ok'] : 'error', r.ok ? '¡Listo! Tus alumnos ya pueden preguntarme 💛' : r.error, 3800);
     },
-    async iaoff(){ const r = await ProfeIA.activarAlumnos(false); barAula(); reaccionar(r.ok ? 'normal' : 'error', r.ok ? 'Listo: los alumnos ya no pueden usar la IA.' : r.error, 3000); },
-    abrir(){ const s = st.sug; if(!s || typeof lbViewer !== 'function') return; reaccionar('festejo', '¡Buena elección! 📖', 1800); lbViewer(s.id, s.p); },
+    async iaoff(){ const r = await ProfeIA.activarAlumnos(false); barAula(); reaccionar(r.ok ? 'ok' : 'error', r.ok ? 'Listo: los alumnos ya no pueden usar la IA.' : r.error, 3000); },
+    abrir(){ const s = st.sug; if(!s || typeof lbViewer !== 'function') return; reaccionar(['bien', 'ok'], '¡Buena elección! 📖', 1800); lbViewer(s.id, s.p); },
     otra(){ st.sug = sugerir(true); pizKiosco(); }
   };
   function pizAula(){
@@ -279,13 +302,20 @@
     return t.split(/(\$\$[\s\S]+?\$\$|\$[^$\n]+?\$)/).map((seg, i) => i % 2 ? E(seg)
       : E(seg).replace(/\*\*(?=\S)([^*\n]*?\S)\*\*/g, '<b>$1</b>').replace(/(^|[\s(])\*(?=\S)([^*\n]*?\S)\*(?=[\s).,;:!?]|$)/g, '$1<i>$2</i>').replace(/^[ \t]*[-*] /gm, '• ')).join('');
   }
-  function renderIA(el, r){
-    const sinSvg = String(r.text || '').replace(/```(?:svg|xml|html)?\s*<svg[\s\S]*?<\/svg>\s*```|<svg[\s\S]*?<\/svg>/gi, '');
-    let h = ''; const figs = r.figs || [];
-    sinSvg.split(/\[\[FIG:(\d+)\]\]/).forEach((seg, i) => {
+  const SIN_SVG = /```(?:svg|xml|html)?\s*<svg[\s\S]*?<\/svg>\s*```|<svg[\s\S]*?<\/svg>/gi;
+  function tramo(txt, figs){                                         // texto con negrita/fórmulas y, donde está [[FIG:n]], el gráfico que dibujó la herramienta graficar
+    let h = '';
+    String(txt || '').replace(SIN_SVG, '').split(/\[\[FIG:(\d+)\]\]/).forEach((seg, i) => {
       if(i % 2){ const c = figs[+seg] && typeof tutorCleanSvg === 'function' ? tutorCleanSvg(figs[+seg]) : ''; if(c) h += `<div class="esc-fig">${c}</div>`; }
       else if(seg.trim()) h += mdHtml(seg.trim());
     });
+    return h;
+  }
+  function renderIA(el, r){
+    const figs = r.figs || [], sv = typeof tutorSplit === 'function' ? tutorSplit(String(r.text || '')) : {antes:String(r.text || ''), svg:'', despues:''};
+    let h = tramo(sv.antes, figs);
+    if(sv.svg){ const c = typeof tutorCleanSvg === 'function' ? tutorCleanSvg(sv.svg) : ''; if(c) h += `<div class="esc-fig">${c}</div>`; }   // figura geométrica que dibujó la Profe
+    h += tramo(sv.despues, figs);
     if(r.calcs && r.calcs.length) h += `<details class="esc-note"><summary>🧮 ${r.calcs.length} cálculo(s) con la calculadora</summary>${r.calcs.map(c => E(c.e) + ' = <b>' + E(c.r) + '</b>').join('<br>')}</details>`;
     const refs = r.refs && r.refs.length && typeof tutorRefsHtml === 'function';
     if(refs || (r.fuentes && r.fuentes.length)) h += `<div class="esc-note">📚 <b>De dónde lo saqué</b>${refs ? ' (tocá una para abrirla; ➕ la agrega a tu guía):' : ':'} ${refs ? tutorRefsHtml(r.refs) : E(r.fuentes.join(' · '))}${r.vistas && r.vistas.length ? '<br>👁 <b>Vistas como imagen:</b> ' + E(r.vistas.join(' · ')) : ''}</div>`;
@@ -293,6 +323,24 @@
     if(typeof tutorBindRefs === 'function') tutorBindRefs(el);
     if(window.renderMathInElement) try { renderMathInElement(el, {delimiters:[{left:'$$', right:'$$', display:true}, {left:'$', right:'$', display:false}], throwOnError:false}); } catch(e){}
   }
+  function pintaFotos(){
+    const th = q('.esc-th'); th.hidden = !st.imgs.length;
+    th.innerHTML = st.imgs.map((im, i) => `<span class="esc-t1"><img src="${im.url}" alt="Foto ${i + 1}"><button type="button" data-x="${i}" aria-label="Quitar la foto ${i + 1}">✕</button></span>`).join('');
+  }
+  async function addFotos(files){
+    const list = files.filter(f => /^image\//.test(f.type)); if(!list.length || !window.ProfeIA) return;
+    for(const f of list){
+      if(st.imgs.length >= MAXI){ alert('Podés adjuntar hasta ' + MAXI + ' fotos por consulta.'); break; }
+      try{ const [p] = await ProfeIA.prepararImagenes([f]); if(!p) throw new Error('No se pudo leer la foto.'); st.imgs.push(p); }
+      catch(e){ alert(e.message || 'No se pudo leer la foto.'); }
+    }
+    pintaFotos();
+  }
+  const vista = x => {                                               // lo que se ve mientras la respuesta se va escribiendo (sin mostrar el código de las figuras)
+    x = String(x || '').replace(/\[\[FIG:\d+\]\]/g, '📈');
+    if(typeof tutorSplit !== 'function') return x;
+    const sp = tutorSplit(x); if(sp.svg) return (sp.antes + '\n📐\n' + sp.despues).trim(); if(sp.dibujando) return (sp.antes + '\n📐 Dibujando la figura…').trim(); return x;
+  };
   function addMsg(rol){
     const d = document.createElement('div'); d.className = 'esc-m ' + rol;
     d.innerHTML = (rol === 'ia' ? `<img class="esc-mav" src="${IMG.normal}" alt="" width="34" height="34">` : '') + '<div class="esc-mt"></div>';
@@ -302,25 +350,30 @@
   const bajar = () => { const m = qc('.esc-msgs'); m.scrollTop = m.scrollHeight; };
   async function enviar(){
     if(st.busy || !window.ProfeIA) return;
-    const inp = q('.esc-q'), t = inp.value.trim(); if(!t) return;
-    inp.value = ''; st.busy = true; q('.esc-send').disabled = true;
-    addMsg('me').textContent = t;
-    const el = addMsg('ia'); el.textContent = '⏳ Pensando…'; bajar();
+    const inp = q('.esc-q'), t = inp.value.trim(), imgs = st.imgs.slice(); if(!t && !imgs.length) return;
+    inp.value = ''; st.imgs = []; pintaFotos(); st.busy = true; q('.esc-send').disabled = true; q('.esc-att').disabled = true;
+    const me = addMsg('me'); me.textContent = t;
+    if(imgs.length){ const w = document.createElement('div'); w.className = 'esc-ths'; imgs.forEach(im => { const i = document.createElement('img'); i.src = im.url; i.alt = 'Foto adjunta'; w.appendChild(i); }); me.appendChild(w); }
+    const el = addMsg('ia'); el.textContent = imgs.length ? '⏳ Mirando tu foto…' : '⏳ Pensando…'; bajar();
     try{ st.chat.scrollIntoView({block:'nearest', behavior:'smooth'}); }catch(e){}
-    showBubble('Dejame pensarlo con vos… ✏️', 0, false);
+    clearTimeout(st.timer); clearTimeout(st.t2);
+    showBubble(imgs.length ? 'A ver esa foto… 👀' : 'Dejame pensarlo con vos… ✏️', 0, false);
+    setAv(imgs.length ? 'sorpresa' : 'pensando');
+    if(imgs.length) st.t2 = setTimeout(() => { if(st.busy) setAv('pensando'); }, 1600);
     let r, ya = false;
     try{
       r = await ProfeIA.preguntar(t, {
-        onText: x => { ya = true; el.textContent = x.replace(/\[\[FIG:\d+\]\]/g, '📈'); bajar(); },
+        imgs,
+        onText: x => { ya = true; el.textContent = vista(x); bajar(); },
         onEstado: x => { if(!ya) el.textContent = x; }
       });
     }catch(e){ console.warn(e); r = {error:String(e.message || e)}; }
-    st.busy = false; q('.esc-send').disabled = false;
+    clearTimeout(st.t2); st.busy = false; q('.esc-send').disabled = false; q('.esc-att').disabled = false;
     if(r.error){
       const msg = r.error === 'sin-clave' ? 'Todavía no está habilitada la ayuda con IA.' : 'No pude responder ahora: ' + r.error;
       el.textContent = '⚠️ ' + msg; reaccionar('error', 'Uy, no pude responder. Probá de nuevo en un momento 💛', 3500);
     } else {
-      renderIA(el, r); reaccionar(r.limite ? 'normal' : 'festejo', '', 1500);
+      renderIA(el, r); reaccionar(r.limite ? 'sorpresa' : ['bien', 'ok'], '', 2400);
     }
     base(); bajar(); inp.focus();
   }
@@ -331,9 +384,9 @@
     const idk = ProfeIA.modo() + '|' + uid;                                          // si cambia quién usa la página (ingresó la profesora, otra cuenta…), se vuelve a consultar
     if(!st.ia || st.iaK !== idk || Date.now() - st.iaT > 300000){ ask.hidden = true; st.ia = {ok:false}; st.iaK = idk; try{ st.ia = await ProfeIA.disponible(); }catch(e){} st.iaT = Date.now(); if(st.iaK !== idk) return; }
     if(modo() === 'kiosco') return;
-    const d = st.ia, inp = q('.esc-q'), btn = q('.esc-send');
-    if(d.ok){ ask.hidden = false; inp.disabled = false; btn.disabled = st.busy; inp.placeholder = modo() === 'biblioteca' ? 'Preguntale a la Profe por tus libros…' : 'Preguntale a la Profe…'; }
-    else if(d.nota){ ask.hidden = false; inp.disabled = true; btn.disabled = true; inp.placeholder = d.nota; }
+    const d = st.ia, inp = q('.esc-q'), btn = q('.esc-send'), att = q('.esc-att');
+    if(d.ok){ ask.hidden = false; inp.disabled = false; btn.disabled = st.busy; att.disabled = st.busy; inp.placeholder = modo() === 'biblioteca' ? 'Preguntale a la Profe por tus libros…' : 'Preguntale a la Profe…'; }
+    else if(d.nota){ ask.hidden = false; inp.disabled = true; btn.disabled = true; att.disabled = true; inp.placeholder = d.nota; }
     else ask.hidden = true;
   }
 
