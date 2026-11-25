@@ -126,6 +126,7 @@ async function lbSync(msg){
     }
   };
   await Promise.all([worker(), worker(), worker()]);
+  if(typeof shLoad === 'function') await shLoad();                    // estantes de la estantería (library/_estantes)
   LIB.books = books; lbIndex();
 }
 async function libEnsure(){

@@ -23,22 +23,42 @@ const SH_DET = [
   [/mc\s*-?\s*graw|mcgraw/, 'McGraw-Hill Education'],
   [/reverte|limusa/, 'Reverté / Limusa']
 ];
+const SH_GEN = new Set(['education', 'editorial', 'editorial', 'ediciones', 'libros', 'books', 'press', 'publishing', 'universidad', 'sin', 'clasificar']);
+const shEsc = t => t;                                             // las palabras ya son alfanuméricas: no hace falta escapar
 function shDetect(title, pages){
   const nrm = typeof lbNrm === 'function' ? lbNrm : s => String(s).toLowerCase();
   const head = nrm(title || '') + ' ' + (pages || []).slice(0, 8).map(t => nrm(t || '')).join(' ');
   let best = '', bestN = 0;
-  SH_DET.forEach(([re, name]) => { const m = head.match(new RegExp(re.source, 'g')); if(m && m.length > bestN){ best = name; bestN = m.length; } });
+  shNames().forEach(name => {
+    const n = nrm(name), parts = (n.match(/[a-z0-9]+/g) || []).filter(w => w.length >= 5 && !SH_GEN.has(w)).map(shEsc);
+    SH_DET.forEach(([re]) => { if(re.test(n)) parts.push(re.source); });          // sinónimos conocidos (Prentice Hall, “Mc Graw”, etc.)
+    if(!parts.length) return;
+    const m = head.match(new RegExp(parts.join('|'), 'g'));
+    if(m && m.length > bestN){ best = name; bestN = m.length; }
+  });
   return best;
 }
 
 /* ---------- datos ---------- */
 const shHash = s => { let h = 2166136261; for(let i = 0; i < s.length; i++){ h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; };
+const SH = {list:null, edit:false};                                  // list: nombres de los estantes, en orden (se guarda en library/_estantes)
+async function shLoad(){
+  try { const d = await fs.collection('library').doc('_estantes').get(); SH.list = (d.exists && Array.isArray(d.data().shelves)) ? d.data().shelves : null; }
+  catch(e){ console.warn('No se pudo leer la lista de estantes', e); SH.list = null; }
+}
+function shNames(){
+  const base = (SH.list || SH_BASE).slice();
+  [...new Set(LIB.books.map(b => (b.editorial || '').trim()).filter(e => e && !base.includes(e)))].sort((a, b) => a.localeCompare(b, 'es')).forEach(e => base.push(e));
+  return base;
+}
+async function shSaveList(list){ await fs.collection('library').doc('_estantes').set({shelves:list, updated:Date.now()}); SH.list = list; }
+async function shBatchEd(pairs){                                       // pairs: [[libro, editorial], ...]
+  for(let a = 0; a < pairs.length; a += 400){ const bt = fs.batch(); pairs.slice(a, a + 400).forEach(([b, e]) => bt.update(fs.collection('library').doc(b.id), {editorial:e})); await bt.commit(); }
+  pairs.forEach(([b, e]) => b.editorial = e);
+}
 function shSections(){
-  const books = LIB.books, extra = [...new Set(books.map(b => (b.editorial || '').trim()).filter(e => e && !SH_BASE.includes(e)))].sort((a, b) => a.localeCompare(b, 'es'));
-  const names = [...SH_BASE, ...extra];
-  const map = new Map(names.map(n => [n, []]));
-  const sin = [];
-  books.forEach(b => { const e = (b.editorial || '').trim(); if(e && map.has(e)) map.get(e).push(b); else sin.push(b); });
+  const names = shNames(), map = new Map(names.map(n => [n, []])), sin = [];
+  LIB.books.forEach(b => { const e = (b.editorial || '').trim(); if(e && map.has(e)) map.get(e).push(b); else sin.push(b); });
   const out = names.map(n => ({name:n, books:map.get(n)}));
   if(sin.length) out.push({name:SH_SIN, books:sin, sin:true});
   const tl = (a, b) => (a.title || '').localeCompare(b.title || '', 'es', {numeric:true});
@@ -56,13 +76,17 @@ function shSpine(b, ed){
 }
 function shelfHTML(){
   if(!LIB.loaded) return '';
-  const secs = shSections(), RO = lbRO();
+  const secs = shSections(), RO = lbRO(), ed = !RO && SH.edit, real = secs.filter(s => !s.sin).length;
   const sinN = LIB.books.filter(b => !(b.editorial || '').trim()).length;
+  let k = -1;
   return `<details class="lb-docsbox lib-ui sh-box" id="sh-box" open><summary class="lb-h">🗄️ Estantería por editoriales (${LIB.books.length})</summary>
-    <p class="note" style="margin:0 0 10px">${LIB.books.length ? 'Tocá un libro para verlo o descargarlo.' : (RO ? 'Todavía no hay libros.' : 'Cuando cargues PDF, aparecen acá, separados por editorial.')}${RO ? '' : ' Para cambiarlo de estante: tocá el libro → “Cambiar editorial” (en la compu también podés arrastrarlo).'}</p>
-    <div class="sh-grid">${secs.map(s => `<section class="sh-sec${s.sin ? ' sh-sinc' : ''}" data-ed="${esc(s.name)}"><div class="sh-plaque"><span>${s.sin ? esc(s.name) : 'Editorial: ' + esc(s.name)}</span><small>${s.books.length}</small>${s.books.length ? `<button type="button" class="sh-find" data-ed="${esc(s.name)}" title="Buscar solo en los libros de esta estantería">🔍</button>` : ''}</div>
-      <div class="sh-row">${s.books.map(b => shSpine(b, s.name)).join('')}${s.books.length ? '' : '<em class="sh-vac">Estante vacío</em>'}<i class="sh-fill"></i></div></section>`).join('')}</div>
-    ${!RO && sinN && LIB.books.length ? `<div class="acts" style="margin-top:12px"><button type="button" class="btn soft" id="sh-auto">🏷 Detectar la editorial de los ${sinN} libro(s) sin clasificar</button></div>` : ''}
+    <p class="note" style="margin:0 0 10px">${ed ? 'Modo edición: con los botones del cartel de cada estante podés <b>moverlo</b>, <b>cambiarle el nombre</b> o <b>quitarlo</b>. Los libros nunca se borran: si quitás un estante, sus libros pasan a “Sin clasificar”.' : (LIB.books.length ? 'Tocá un libro para verlo o descargarlo.' : (RO ? 'Todavía no hay libros.' : 'Cuando cargues PDF, aparecen acá, separados por editorial.'))}${RO || ed ? '' : ' Para cambiar un libro de estante: tocalo → “Cambiar editorial” (en la compu también podés arrastrarlo).'}</p>
+    ${RO ? '' : `<div class="acts" style="margin:0 0 14px"><button type="button" class="btn ${ed ? '' : 'soft'}" id="sh-edit">${ed ? '✔ Listo' : '✏️ Editar estantes'}</button>${ed ? '<button type="button" class="btn" id="sh-add">➕ Nuevo estante</button>' : ''}</div>`}
+    <div class="sh-grid">${secs.map(s => { if(!s.sin) k++; const i = k;
+      return `<section class="sh-sec${s.sin ? ' sh-sinc' : ''}" data-ed="${esc(s.name)}"><div class="sh-plaque"><span>${s.sin ? esc(s.name) : 'Editorial: ' + esc(s.name)}</span><small>${s.books.length}</small>${ed && !s.sin ? `<span class="sh-ctl"><button type="button" data-sa="up" data-ed="${esc(s.name)}" title="Mover antes" ${i === 0 ? 'disabled' : ''}>◀</button><button type="button" data-sa="down" data-ed="${esc(s.name)}" title="Mover después" ${i === real - 1 ? 'disabled' : ''}>▶</button><button type="button" data-sa="ren" data-ed="${esc(s.name)}" title="Cambiar nombre">✏️</button><button type="button" data-sa="del" data-ed="${esc(s.name)}" title="Quitar estante">🗑</button></span>` : ''}${!ed && s.books.length ? `<button type="button" class="sh-find" data-ed="${esc(s.name)}" title="Buscar solo en los libros de esta estantería">🔍</button>` : ''}</div>
+      <div class="sh-row">${s.books.map(b => shSpine(b, s.name)).join('')}${s.books.length ? '' : '<em class="sh-vac">Estante vacío</em>'}<i class="sh-fill"></i></div></section>`; }).join('')}</div>
+    ${!RO && !real && !ed ? '<p class="note">No hay estantes. Tocá “Editar estantes” → “Nuevo estante” para crear el primero.</p>' : ''}
+    ${!RO && sinN && real && LIB.books.length ? `<div class="acts" style="margin-top:12px"><button type="button" class="btn soft" id="sh-auto">🏷 Detectar la editorial de los ${sinN} libro(s) sin clasificar</button></div>` : ''}
   </details>`;
 }
 
@@ -76,7 +100,7 @@ async function shSetEditorial(id, ed){
 function shRefresh(){ if(typeof tab !== 'undefined' && tab === 'lib') { const y = window.scrollY; renderLib(); window.scrollTo(0, y); } }
 function shChoose(id){
   const b = LIB.books.find(x => x.id === id); if(!b) return;
-  const cur = (b.editorial || '').trim(), names = [...shSections().filter(s => !s.sin).map(s => s.name)];
+  const cur = (b.editorial || '').trim(), names = shNames();
   $('#frm').innerHTML = `<h3>Cambiar de editorial</h3><p class="note" style="margin:0 0 10px"><b>${esc(b.title)}</b></p>
     <div class="sh-opts">${names.map(n => `<label class="chk"><input type="radio" name="sh-ed" value="${esc(n)}" ${n === cur ? 'checked' : ''}> ${esc(n)}</label>`).join('')}
     <label class="chk"><input type="radio" name="sh-ed" value="" ${!cur ? 'checked' : ''}> ${SH_SIN}</label>
@@ -89,7 +113,7 @@ function shChoose(id){
   $('#sh-ok').onclick = async () => {
     let v = document.querySelector('input[name=sh-ed]:checked').value;
     if(v === '__otra'){ v = nw.value.trim(); if(!v){ nw.focus(); return; } }
-    try { await shSetEditorial(id, v); $('#dlg').close(); shRefresh(); } catch(e){ console.error(e); alert('No se pudo guardar. Revisá tu conexión.'); }
+    try { if(v && !names.includes(v)){ if(!shValid(v)) return; await shSaveList([...names, v]); } await shSetEditorial(id, v); $('#dlg').close(); shRefresh(); } catch(e){ console.error(e); alert('No se pudo guardar. Revisá tu conexión.'); }
   };
   $('#dlg').showModal();
 }
@@ -111,16 +135,42 @@ function shFind(ed){
   renderLib(); window.scrollTo({top:0, behavior:'smooth'});
   const q = document.getElementById('lb-q'); if(q) q.focus({preventScroll:true});
 }
+function shValid(v, except){
+  v = (v || '').trim(); if(!v) return '';
+  if(v.length > 60){ alert('El nombre es muy largo (máximo 60 letras).'); return ''; }
+  if(lbNrm(v) === lbNrm(SH_SIN)){ alert('Ese nombre está reservado para los libros sin estante.'); return ''; }
+  if(shNames().some(n => n !== except && lbNrm(n) === lbNrm(v))){ alert('Ya existe un estante con ese nombre.'); return ''; }
+  return v;
+}
+function shAddShelf(){
+  askName('Nuevo estante (nombre de la editorial)', '', async v => { v = shValid(v); if(!v) return; await shSaveList([...shNames(), v]); shRefresh(); });
+}
+function shRenameShelf(old){
+  askName('Cambiar el nombre del estante', old, async v => {
+    v = shValid(v, old); if(!v || v === old) return;
+    const pairs = LIB.books.filter(b => (b.editorial || '').trim() === old).map(b => [b, v]);
+    await shSaveList(shNames().map(n => n === old ? v : n));            // primero la lista, después los libros
+    await shBatchEd(pairs); shRefresh();
+  });
+}
+async function shDeleteShelf(name){
+  const bks = LIB.books.filter(b => (b.editorial || '').trim() === name);
+  if(!confirm('¿Quitar el estante “' + name + '”?' + (bks.length ? '\n\nLos ' + bks.length + ' libro(s) NO se borran: pasan a “' + SH_SIN + '”.' : ''))) return;
+  try { await shBatchEd(bks.map(b => [b, ''])); await shSaveList(shNames().filter(n => n !== name)); shRefresh(); }
+  catch(e){ console.error(e); alert('No se pudo quitar el estante. Revisá tu conexión.'); }
+}
+async function shMoveShelf(name, dir){
+  const l = shNames(), i = l.indexOf(name), j = i + dir; if(i < 0 || j < 0 || j >= l.length) return;
+  [l[i], l[j]] = [l[j], l[i]];
+  try { await shSaveList(l); shRefresh(); } catch(e){ console.error(e); alert('No se pudo guardar el orden. Revisá tu conexión.'); }
+}
 async function shAuto(btn){
   const todo = LIB.books.filter(b => !(b.editorial || '').trim());
   if(!todo.length) return;
   btn.disabled = true; btn.textContent = 'Revisando…';
   const hits = todo.map(b => [b, shDetect(b.title, b.pages)]).filter(x => x[1]);
   try {
-    for(let a = 0; a < hits.length; a += 400){
-      const bt = fs.batch(); hits.slice(a, a + 400).forEach(([b, e]) => bt.update(fs.collection('library').doc(b.id), {editorial:e})); await bt.commit();
-    }
-    hits.forEach(([b, e]) => b.editorial = e);
+    await shBatchEd(hits.map(([b, e]) => [b, e]));
     LIB.note = hits.length ? 'Listo: ' + hits.length + ' libro(s) ya están en su estante. ' + (todo.length - hits.length ? 'Los otros ' + (todo.length - hits.length) + ' no mencionan una editorial conocida: movelos a mano.' : '') : 'No pude reconocer la editorial de ninguno (el texto de sus primeras páginas no la menciona). Movelos a mano: tocá el libro → “Cambiar editorial”.';
   } catch(e){ console.error(e); LIB.note = 'No se pudo guardar la clasificación. Revisá tu conexión.'; }
   shRefresh();
@@ -129,6 +179,9 @@ function shelfBind(){
   const box = document.getElementById('sh-box'); if(!box) return;
   let dragId = '';
   box.onclick = e => {
+    const ed = e.target.closest('#sh-edit'); if(ed){ SH.edit = !SH.edit; shRefresh(); return; }
+    if(e.target.closest('#sh-add')){ shAddShelf(); return; }
+    const c = e.target.closest('[data-sa]'); if(c){ const n = c.dataset.ed, a = c.dataset.sa; if(a === 'ren') shRenameShelf(n); else if(a === 'del') shDeleteShelf(n); else shMoveShelf(n, a === 'up' ? -1 : 1); return; }
     const f = e.target.closest('.sh-find'); if(f){ shFind(f.dataset.ed); return; }
     const a = e.target.closest('#sh-auto'); if(a){ shAuto(a); return; }
     const k = e.target.closest('.sh-bk'); if(k) shBook(k.dataset.id);
@@ -169,8 +222,9 @@ function shelfBind(){
 .sh-bk:hover .sh-sp,.sh-bk:focus-visible .sh-sp{transform:translateY(-10px);filter:brightness(1.12)}
 .sh-bk:focus-visible{outline:2px solid #ffe066;outline-offset:1px}
 .sh-bk.sh-drag{opacity:.4}
-.sh-vac{align-self:center;color:#d9c7a6;opacity:.75;font:600 .9rem var(--fb,sans-serif);padding:0 6px 8px;flex:0 0 auto}
+.sh-vac{height:172px;box-sizing:border-box;border-bottom:12px solid #8a5a2b;display:flex;align-items:center;color:#d9c7a6;opacity:.75;font:600 .9rem var(--fb,sans-serif);padding:0 6px 8px;flex:0 0 auto}
 .sh-sinc .sh-plaque{background:linear-gradient(#55524d,#3f3d39)}
+.sh-ctl{display:flex;gap:4px;flex:0 0 auto}.sh-ctl button{border:1px solid #8a6a45;background:rgba(255,255,255,.1);color:#f1e3c8;border-radius:8px;padding:4px 8px;cursor:pointer;font-size:.85rem;line-height:1;min-width:30px}.sh-ctl button:hover:not(:disabled){background:rgba(255,255,255,.24)}.sh-ctl button:disabled{opacity:.3;cursor:default}
 .sh-opts{display:flex;flex-direction:column;gap:6px}
 @media (max-width:520px){.sh-sp b{font-size:.62rem}}
 @media print{.sh-box{display:none}}
