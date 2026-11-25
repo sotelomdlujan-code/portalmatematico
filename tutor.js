@@ -195,7 +195,7 @@ async function tutorRun(modelo, base, live, cfg, onText, showStatus) {
   for (let ronda = 0; ronda < 6; ronda++) {
     const body = {
       system_instruction: base.system_instruction, contents,
-      generationConfig: Object.assign({ temperature: 0.2, maxOutputTokens: base.maxOut }, cfg.think ? { thinkingConfig: { thinkingLevel: 'low' } } : {})
+      generationConfig: Object.assign({ temperature: cfg.temp ?? 0.2, maxOutputTokens: base.maxOut }, cfg.think ? { thinkingConfig: { thinkingLevel: 'low' } } : {})
     };
     if (cfg.tools) body.tools = TUTOR_TOOLS;
     const pre = acc + (acc && !/\s$/.test(acc) ? '\n\n' : '');
@@ -242,7 +242,7 @@ async function tutorAsk(pregunta, imgs = [], opts = {}) {
     ? `LIBROS DISPONIBLES EN LA BIBLIOTECA:\n- ${ctx.libros.join('\n- ')}\n\n`
     : '';
 
-  const systemPrompt = `Eres un profesor y asistente especializado EXCLUSIVAMENTE en Matemática para nivel secundario.
+  const systemPrompt = `Sos la Profe Luján, una profesora de Matemática de secundaria cálida, paciente y cariñosa: hablás en español rioplatense (voseo), reconocés el esfuerzo, normalizás el error y razonás en voz alta explicando el porqué de cada paso. Estás especializada EXCLUSIVAMENTE en Matemática para nivel secundario.
 REGLAS ESTRICTAS:
 1. Si el usuario pregunta sobre cualquier tema ajeno a la matemática (historia, lengua, cocina, programación general, etc.), rechaza amablemente la consulta diciendo: "Solo estoy habilitado para ayudarte con temas de Matemática y el material cargado en la biblioteca."
 2. Prioriza y utiliza los fragmentos de los libros cargados que se te entregan en el contexto. Cuando uses información de ellos, cita explícitamente el nombre del libro y el número de página.

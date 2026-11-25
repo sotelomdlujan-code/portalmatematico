@@ -10,7 +10,7 @@
   const SALUDO = {
     tasks:'¡Hola! Acá ves tus tareas y cuándo se entregan 🌟', materials:'Acá está el material para estudiar 📚', consultas:'¿Tenés una duda? Escribila y te respondo 💬',
     plans:'Organicemos las clases 📘', exams:'Preparemos las evaluaciones ✏️', gen:'Armá tu examen con ejercicios al azar 🧮',
-    lib:'¿Qué tema buscamos hoy? 📖', guides:'Armá tu guía con los ejercicios que elijas 📑', tutor:'Preguntame lo que no entiendas 🤖'
+    lib:'¿Qué tema buscamos hoy? También podés preguntarme por tus libros 📖', guides:'Armá tu guía con los ejercicios que elijas 📑', tutor:'Preguntame lo que no entiendas 🤖'
   };
   const TIPS = {lib:'Buscá por tema: “fracciones”, “ecuaciones”…', guides:'Armá una guía con los ejercicios que elijas', tutor:'Preguntame por un libro y su página'};
   const TEMAS = ['enteros','fracciones','ecuacion1','porcentaje','funcion_lineal','sistemas','factoreo','cuadratica','potencias','estadistica','probabilidad','divisibilidad','decimales','radicacion','notacion_cientifica','expresiones_alg','inecuaciones','sucesiones','combinatoria','comb_num','proporcionalidad','exp_log','polinomios'];
@@ -25,7 +25,7 @@
   const hash = t => { let h = 2166136261; for(const c of String(t)){ h ^= c.charCodeAt(0); h = Math.imul(h, 16777619); } return h >>> 0; };
   const semilla = n => { let a = n >>> 0; return () => { a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; };
   const modo = () => { const t = document.body.dataset.tab; return BIBLIO.includes(t) ? 'biblioteca' : KIOSCO.includes(t) ? 'kiosco' : 'aula'; };
-  const st = {root:null, mini:null, key:'', tab:'', ej:null, sug:null, timer:null, bt:null, poll:null};
+  const st = {root:null, mini:null, chat:null, ia:null, iaT:0, iaK:'', busy:false, key:'', tab:'', ej:null, sug:null, timer:null, bt:null, poll:null};
 
   /* ---------- datos de la app (se leen de app.js al momento de usarlos) ---------- */
   function info(){
@@ -127,7 +127,32 @@
 .esc-chip{margin-left:auto;font:700 .85rem var(--fb);color:#fff4de;background:rgba(0,0,0,.28);padding:4px 10px;border-radius:99px}
 .esc-in{flex:1 1 180px;min-width:0;padding:9px 10px;border-radius:10px;border:2px solid #4a2410;font:600 .9rem var(--fb);background:#fffdf5;color:#3b2a1a}
 .esc-mini{display:block;margin:0 auto 14px;padding:8px 16px;border-radius:99px;border:2px solid var(--bd);background:var(--sf);color:var(--tx);font:700 .85rem var(--fb);cursor:pointer}
-@media print{.esc,.esc-mini{display:none!important}}`;
+
+.esc-ask{display:flex;gap:8px;padding:0 10px 10px;background:#8c4c22}
+.esc-aula .esc-ask{background:#954218}.esc-biblioteca .esc-ask{background:#703717}
+.esc-ask[hidden]{display:none}
+.esc-q{flex:1;min-width:0;padding:11px 12px;border-radius:12px;border:2px solid #4a2410;font:600 .95rem var(--fb);background:#fffdf5;color:#3b2a1a}
+.esc-q:disabled{opacity:.8}
+.esc-send{min-width:48px;border-radius:12px;border:2px solid #4a2410;background:#c7f2a7;color:#4a2410;font-size:1.1rem;cursor:pointer;box-shadow:0 2px 0 #4a2410}
+.esc-send:disabled{opacity:.55;cursor:default}
+.esc.esc-open{border-radius:20px 20px 0 0;border-bottom-width:0;margin-bottom:0}
+.esc-chat{width:min(100%,430px);margin:0 auto 18px;border-radius:0 0 20px 20px;border:3px solid #6b3a1a;border-top:0;box-shadow:0 10px 26px rgba(0,0,0,.2);background:var(--sf);color:var(--tx);overflow:hidden}
+.esc-chat[hidden]{display:none}
+.esc-chat-h{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 12px;font:700 .9rem var(--fb);border-bottom:1px solid var(--bd)}
+.esc-lnk{border:0;background:none;color:var(--ac);cursor:pointer;font:700 .8rem var(--fb);padding:6px}
+.esc-msgs{max-height:min(62vh,480px);overflow-y:auto;padding:10px 12px 14px;display:flex;flex-direction:column;gap:10px}
+.esc-msgs[hidden]{display:none}
+.esc-m{display:flex;gap:8px;align-items:flex-start}
+.esc-m.me{justify-content:flex-end}
+.esc-mt{padding:9px 12px;max-width:90%;overflow-wrap:anywhere;white-space:pre-wrap;line-height:1.45;font-size:.93rem}
+.esc-m.me .esc-mt{background:var(--plans-bg);border-radius:14px 14px 4px 14px}
+.esc-m.ia .esc-mt{background:var(--sf2);border:1px solid var(--bd);border-radius:14px 14px 14px 4px}
+.esc-mav{width:34px;height:34px;border-radius:50%;object-fit:cover;object-position:50% 12%;background:#f3d9b8;border:2px solid #4a2410;flex:none}
+.esc-note{font-size:.8rem;color:var(--mu);margin-top:6px;white-space:normal}
+.esc-fig{background:#fff;border-radius:10px;padding:6px;margin:8px 0;border:1px solid var(--bd);white-space:normal}
+.esc-warn{flex-basis:100%;font:600 .78rem/1.3 var(--fb);color:#fff4de;text-align:center}
+.esc-info{font:700 .88rem var(--fb);color:#fff4de}
+@media print{.esc,.esc-mini,.esc-chat{display:none!important}}`;
     document.head.appendChild(s);
   }
 
@@ -136,7 +161,18 @@
     const root = document.createElement('section'); root.id = 'escena'; root.className = 'esc'; root.setAttribute('aria-label', 'La Profe Luján');
     root.innerHTML = `<div class="esc-vista"><div class="esc-pz"></div><img class="esc-av" src="${IMG.normal}" alt="La Profe Luján" width="320" height="445" draggable="false"><div class="esc-fr"></div>
       <div class="esc-bub" hidden><span class="esc-bt"></span><button type="button" class="esc-bx" aria-label="Cerrar el mensaje">✕</button></div>
-      <button type="button" class="esc-hide" aria-label="Ocultar la escena" title="Ocultar">▾</button></div><div class="esc-bar"></div>`;
+      <button type="button" class="esc-hide" aria-label="Ocultar la escena" title="Ocultar">▾</button></div><div class="esc-bar"></div>
+      <div class="esc-ask" hidden><input class="esc-q" type="text" maxlength="700" placeholder="Preguntale a la Profe…" aria-label="Preguntale a la Profe" autocomplete="off"><button type="button" class="esc-send" aria-label="Enviar la pregunta">➤</button></div>`;
+    const chat = document.createElement('section'); chat.id = 'escena-chat'; chat.className = 'esc-chat'; chat.hidden = true; chat.setAttribute('aria-label', 'Charla con la Profe');
+    chat.innerHTML = `<div class="esc-chat-h"><b>💬 Charla con la Profe</b><span><button type="button" class="esc-lnk" data-c="nueva">🧹 Nueva charla</button><button type="button" class="esc-lnk" data-c="min" aria-label="Minimizar la charla">▾</button></span></div><div class="esc-msgs" aria-live="polite"></div>`;
+    root.querySelector('.esc-q').onkeydown = ev => { if(ev.key === 'Enter' && !ev.isComposing){ ev.preventDefault(); enviar(); } };
+    root.querySelector('.esc-send').onclick = () => enviar();
+    chat.onclick = ev => {
+      const b = ev.target.closest('[data-c]'); if(!b) return;
+      if(b.dataset.c === 'nueva'){ if(st.busy) return; if(window.ProfeIA) ProfeIA.reiniciar(); chat.querySelector('.esc-msgs').innerHTML = ''; chat.hidden = true; sincChat(); }
+      else { const ms = chat.querySelector('.esc-msgs'); ms.hidden = !ms.hidden; b.textContent = ms.hidden ? '▴' : '▾'; }
+    };
+    st.chat = chat;
     const mini = document.createElement('button'); mini.type = 'button'; mini.id = 'escena-show'; mini.className = 'esc-mini'; mini.textContent = '🏫 Mostrar a la Profe'; mini.hidden = true;
     root.querySelector('.esc-hide').onclick = () => { lsSet('aula_escena', 'off'); aplicarVisible(); };
     mini.onclick = () => { lsSet('aula_escena', 'on'); aplicarVisible(); };
@@ -146,8 +182,10 @@
     st.root = root; st.mini = mini;
     setTimeout(() => { ['festejo', 'error'].forEach(k => { const im = new Image(); im.src = IMG[k]; }); }, 1500);   // se precargan para que el cambio de cara sea instantáneo
   }
-  const aplicarVisible = () => { const off = lsGet('aula_escena') === 'off'; st.root.hidden = off; st.mini.hidden = !off; };
+  const aplicarVisible = () => { const off = lsGet('aula_escena') === 'off'; st.root.hidden = off; st.mini.hidden = !off; st.chat.hidden = off || !qc('.esc-msgs').children.length; sincChat(); };
   const q = s => st.root.querySelector(s);
+  const qc = s => st.chat.querySelector(s);
+  const sincChat = () => st.root.classList.toggle('esc-open', !st.chat.hidden && !st.root.hidden);
 
   /* ---------- avatar y globo de diálogo ---------- */
   function setAv(estado){
@@ -186,6 +224,18 @@
         ssSet('aula_av_x', ''); barAula(); base(); reaccionar('festejo', txt ? '¡Mensaje publicado!' : 'Mensaje borrado', 1800);
       }catch(e){ console.warn(e); reaccionar('error', 'No se pudo guardar. Probá de nuevo.', 2500); }
     },
+    async iaal(){
+      const on = await ProfeIA.estadoAlumnos();
+      q('.esc-bar').innerHTML = `<span class="esc-info">${on ? '✅ Los alumnos pueden hablar con la Profe' : '⛔ Los alumnos todavía no pueden hablar con la Profe'}</span>` +
+        (on ? `<button type="button" class="esc-b" data-a="iaoff">Desactivar</button>` : `<button type="button" class="esc-b ok" data-a="iaon">Activar</button>`) +
+        `<button type="button" class="esc-b" data-a="cm">Cerrar</button><div class="esc-warn">Al activarlo, la clave de tu IA queda legible para quien entre al aula. Usá una clave solo para esto y restringila a tu sitio en Google AI Studio. Al desactivar, la clave se borra de ahí.</div>`;
+    },
+    async iaon(){
+      if(!confirm('Se va a compartir tu clave de IA con las personas que entren a tus cursos. ¿Querés activarlo?')) return;
+      const r = await ProfeIA.activarAlumnos(true); barAula();
+      reaccionar(r.ok ? 'festejo' : 'error', r.ok ? '¡Listo! Tus alumnos ya pueden preguntarme 💛' : r.error, 3800);
+    },
+    async iaoff(){ const r = await ProfeIA.activarAlumnos(false); barAula(); reaccionar(r.ok ? 'normal' : 'error', r.ok ? 'Listo: los alumnos ya no pueden usar la IA.' : r.error, 3000); },
     abrir(){ const s = st.sug; if(!s || typeof lbViewer !== 'function') return; reaccionar('festejo', '¡Buena elección! 📖', 1800); lbViewer(s.id, s.p); },
     otra(){ st.sug = sugerir(true); pizKiosco(); }
   };
@@ -199,6 +249,7 @@
       : !e.done ? `<button type="button" class="esc-b ok" data-a="si">🎉 Me salió</button><button type="button" class="esc-b" data-a="no">🤔 No me salió</button>`
       : `<button type="button" class="esc-b" data-a="otro">➕ Otro ejercicio</button>`;
     if(i.prof && i.cid) h += `<button type="button" class="esc-b" data-a="msg">💬 Mensaje de la Profe</button>`;
+    if(i.prof && window.ProfeIA) h += `<button type="button" class="esc-b" data-a="iaal">🤖 IA para alumnos</button>`;
     q('.esc-bar').innerHTML = h + `<span class="esc-chip" title="Días seguidos practicando">🔥 ${racha()}</span>`;
   }
   function pizKiosco(){
@@ -217,13 +268,74 @@
       st.sug = st.sug || sugerir(false); pizKiosco();
       if(!st.sug){ let n = 0; st.poll = setInterval(() => { if(++n > 40 || modo() === 'aula'){ clearInterval(st.poll); return; } const s = sugerir(false); if(s){ clearInterval(st.poll); st.sug = s; pizKiosco(); } }, 1500); }
     }
-    base();
+    base(); askUI();
+  }
+
+  /* ---------- charla con la Profe (IA) ---------- */
+  function mdHtml(t){                                              // negrita y listas simples; las fórmulas ($...$) quedan intactas para KaTeX
+    return t.split(/(\$\$[\s\S]+?\$\$|\$[^$\n]+?\$)/).map((seg, i) => i % 2 ? E(seg)
+      : E(seg).replace(/\*\*(?=\S)([^*\n]*?\S)\*\*/g, '<b>$1</b>').replace(/(^|[\s(])\*(?=\S)([^*\n]*?\S)\*(?=[\s).,;:!?]|$)/g, '$1<i>$2</i>').replace(/^[ \t]*[-*] /gm, '• ')).join('');
+  }
+  function renderIA(el, r){
+    const sinSvg = String(r.text || '').replace(/```(?:svg|xml|html)?\s*<svg[\s\S]*?<\/svg>\s*```|<svg[\s\S]*?<\/svg>/gi, '');
+    let h = ''; const figs = r.figs || [];
+    sinSvg.split(/\[\[FIG:(\d+)\]\]/).forEach((seg, i) => {
+      if(i % 2){ const c = figs[+seg] && typeof tutorCleanSvg === 'function' ? tutorCleanSvg(figs[+seg]) : ''; if(c) h += `<div class="esc-fig">${c}</div>`; }
+      else if(seg.trim()) h += mdHtml(seg.trim());
+    });
+    if(r.calcs && r.calcs.length) h += `<details class="esc-note"><summary>🧮 ${r.calcs.length} cálculo(s) con la calculadora</summary>${r.calcs.map(c => E(c.e) + ' = <b>' + E(c.r) + '</b>').join('<br>')}</details>`;
+    if(r.fuentes && r.fuentes.length) h += `<div class="esc-note">📚 <b>Páginas consultadas:</b> ${E(r.fuentes.join(' · '))}${r.vistas && r.vistas.length ? '<br>👁 <b>Vistas como imagen:</b> ' + E(r.vistas.join(' · ')) : ''}</div>`;
+    el.innerHTML = h;
+    if(window.renderMathInElement) try { renderMathInElement(el, {delimiters:[{left:'$$', right:'$$', display:true}, {left:'$', right:'$', display:false}], throwOnError:false}); } catch(e){}
+  }
+  function addMsg(rol){
+    const d = document.createElement('div'); d.className = 'esc-m ' + rol;
+    d.innerHTML = (rol === 'ia' ? `<img class="esc-mav" src="${IMG.normal}" alt="" width="34" height="34">` : '') + '<div class="esc-mt"></div>';
+    qc('.esc-msgs').appendChild(d); st.chat.hidden = false; qc('.esc-msgs').hidden = false; sincChat();
+    return d.querySelector('.esc-mt');
+  }
+  const bajar = () => { const m = qc('.esc-msgs'); m.scrollTop = m.scrollHeight; };
+  async function enviar(){
+    if(st.busy || !window.ProfeIA) return;
+    const inp = q('.esc-q'), t = inp.value.trim(); if(!t) return;
+    inp.value = ''; st.busy = true; q('.esc-send').disabled = true;
+    addMsg('me').textContent = t;
+    const el = addMsg('ia'); el.textContent = '⏳ Pensando…'; bajar();
+    try{ st.chat.scrollIntoView({block:'nearest', behavior:'smooth'}); }catch(e){}
+    showBubble('Dejame pensarlo con vos… ✏️', 0, false);
+    let r, ya = false;
+    try{
+      r = await ProfeIA.preguntar(t, {
+        onText: x => { ya = true; el.textContent = x.replace(/\[\[FIG:\d+\]\]/g, '📈'); bajar(); },
+        onEstado: x => { if(!ya) el.textContent = x; }
+      });
+    }catch(e){ console.warn(e); r = {error:String(e.message || e)}; }
+    st.busy = false; q('.esc-send').disabled = false;
+    if(r.error){
+      const msg = r.error === 'sin-clave' ? 'Todavía no está habilitada la ayuda con IA.' : 'No pude responder ahora: ' + r.error;
+      el.textContent = '⚠️ ' + msg; reaccionar('error', 'Uy, no pude responder. Probá de nuevo en un momento 💛', 3500);
+    } else {
+      renderIA(el, r); reaccionar(r.limite ? 'normal' : 'festejo', '', 1500);
+    }
+    base(); bajar(); inp.focus();
+  }
+  async function askUI(){                                          // muestra el campo para preguntarle a la Profe según quién sea y si está habilitado
+    const ask = q('.esc-ask'); if(!ask) return;
+    if(modo() === 'kiosco' || !window.ProfeIA){ ask.hidden = true; return; }       // en la pestaña Tutor IA ya hay un chat propio
+    let uid = ''; try{ uid = (typeof user !== 'undefined' && user && user.uid) || ''; }catch(e){}
+    const idk = ProfeIA.modo() + '|' + uid;                                          // si cambia quién usa la página (ingresó la profesora, otra cuenta…), se vuelve a consultar
+    if(!st.ia || st.iaK !== idk || Date.now() - st.iaT > 300000){ ask.hidden = true; st.ia = {ok:false}; st.iaK = idk; try{ st.ia = await ProfeIA.disponible(); }catch(e){} st.iaT = Date.now(); if(st.iaK !== idk) return; }
+    if(modo() === 'kiosco') return;
+    const d = st.ia, inp = q('.esc-q'), btn = q('.esc-send');
+    if(d.ok){ ask.hidden = false; inp.disabled = false; btn.disabled = st.busy; inp.placeholder = modo() === 'biblioteca' ? 'Preguntale a la Profe por tus libros…' : 'Preguntale a la Profe…'; }
+    else if(d.nota){ ask.hidden = false; inp.disabled = true; btn.disabled = true; inp.placeholder = d.nota; }
+    else ask.hidden = true;
   }
 
   /* ---------- se mantiene arriba de #main aunque cada pestaña se redibuje ---------- */
   function sync(){
     const main = document.getElementById('main'); if(!main || !st.root) return;
-    if(main.firstElementChild !== st.root) main.prepend(st.root, st.mini);
+    if(main.firstElementChild !== st.root) main.prepend(st.root, st.chat, st.mini);
     const i = info(), t = document.body.dataset.tab || '', key = [modo(), i.cid, i.aviso, i.prof].join('|');
     aplicarVisible();
     if(key !== st.key){ st.key = key; paint(); }
