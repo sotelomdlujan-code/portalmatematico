@@ -141,7 +141,7 @@ LIBROS: priorizá los fragmentos de los libros de la biblioteca que se te entreg
     let r; try { r = await correr(base, live, op.onText, op.onEstado); } finally { TUTOR.key = prevKey; }
     if(r.error) return r;
     hist(m).push({role:'user', text:texto}, {role:'ai', text:r.text}); guardar(m);
-    return {text:r.text, figs:live.figs || [], calcs:live.calcs || [], fuentes:m === 'docente' ? ctx.fuentes : [], vistas};
+    return {text:r.text, figs:live.figs || [], calcs:live.calcs || [], fuentes:m === 'docente' ? ctx.fuentes : [], refs:m === 'docente' ? (ctx.refs || []) : [], vistas};
   }
   function reiniciar(){ const m = modo(); H[m] = []; try { sessionStorage.removeItem('profe_h_' + m); } catch(e){} }
 

@@ -287,8 +287,10 @@
       else if(seg.trim()) h += mdHtml(seg.trim());
     });
     if(r.calcs && r.calcs.length) h += `<details class="esc-note"><summary>🧮 ${r.calcs.length} cálculo(s) con la calculadora</summary>${r.calcs.map(c => E(c.e) + ' = <b>' + E(c.r) + '</b>').join('<br>')}</details>`;
-    if(r.fuentes && r.fuentes.length) h += `<div class="esc-note">📚 <b>Páginas consultadas:</b> ${E(r.fuentes.join(' · '))}${r.vistas && r.vistas.length ? '<br>👁 <b>Vistas como imagen:</b> ' + E(r.vistas.join(' · ')) : ''}</div>`;
+    const refs = r.refs && r.refs.length && typeof tutorRefsHtml === 'function';
+    if(refs || (r.fuentes && r.fuentes.length)) h += `<div class="esc-note">📚 <b>De dónde lo saqué</b>${refs ? ' (tocá una para abrirla; ➕ la agrega a tu guía):' : ':'} ${refs ? tutorRefsHtml(r.refs) : E(r.fuentes.join(' · '))}${r.vistas && r.vistas.length ? '<br>👁 <b>Vistas como imagen:</b> ' + E(r.vistas.join(' · ')) : ''}</div>`;
     el.innerHTML = h;
+    if(typeof tutorBindRefs === 'function') tutorBindRefs(el);
     if(window.renderMathInElement) try { renderMathInElement(el, {delimiters:[{left:'$$', right:'$$', display:true}, {left:'$', right:'$', display:false}], throwOnError:false}); } catch(e){}
   }
   function addMsg(rol){

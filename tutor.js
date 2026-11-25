@@ -38,8 +38,33 @@ function tutorRange(b) {
   return m ? { a: +m[1], b: +m[2], n } : { a: 1, b: n, n };
 }
 
+// Referencias a páginas de los libros: botones para abrirlas en el visor o agregarlas a la guía
+const tutorShort = t => { t = String(t || '').replace(/\s*\(\s*págs?\.?[^)]*\)\s*$/i, ''); return t.length > 34 ? t.slice(0, 33) + '…' : t; };
+function tutorRef(b, p, bt) {
+  const bk = LIB.books.find(x => x.id === b); let n = p;
+  try { if (bk) n = p + tutorRange(bk).a - 1; } catch (e) {}                // número de página del libro completo (la parte numera desde 1)
+  return { b, p, n, bt: bt || (bk && bk.title) || '' };
+}
+function tutorRefsHtml(refs) {
+  const seen = new Set(), out = [];
+  (refs || []).forEach(r => {
+    const k = r.b + '|' + r.p; if (seen.has(k)) return; seen.add(k);
+    out.push(`<span class="tu-rf" style="display:inline-flex;gap:3px;max-width:100%"><button type="button" class="btn soft tu-ref" style="padding:6px 10px;font-size:.8rem;text-align:left;line-height:1.25" data-b="${esc(r.b)}" data-p="${r.p}" title="${esc(r.bt)}">📖 ${esc(tutorShort(r.bt))} · pág. ${r.n || r.p}</button><button type="button" class="btn soft tu-gd" style="padding:6px 10px;font-size:.8rem" data-b="${esc(r.b)}" data-p="${r.p}" title="Agregar esta página a la guía" aria-label="Agregar esta página a la guía">➕</button></span>`);
+  });
+  return `<span class="tu-rfs" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px">${out.join('')}</span>`;
+}
+function tutorBindRefs(root) {
+  if (!root || root._refs) return; root._refs = true;
+  root.addEventListener('click', ev => {
+    const b = ev.target.closest('.tu-ref,.tu-gd'); if (!b) return;
+    if (!LIB.books.find(x => x.id === b.dataset.b)) { alert('La biblioteca todavía se está abriendo. Probá de nuevo en unos segundos.'); return; }
+    if (b.classList.contains('tu-ref')) lbViewer(b.dataset.b, +b.dataset.p);                       // se abre en esa página; desde ahí también hay “➕ A la guía”
+    else if (typeof guideAddMany === 'function') guideAddMany([b.dataset.b + '|' + b.dataset.p]);
+  });
+}
+
 function tutorContext(pregunta) {
-  if (!LIB.loaded || !LIB.books.length) return { texto: '', fuentes: [], libros: [] };
+  if (!LIB.loaded || !LIB.books.length) return { texto: '', fuentes: [], libros: [], refs: [] };
   // Lista de TODOS los documentos, también los escaneados (sin texto): antes los que no tenían texto ni aparecían.
   const libros = LIB.books.map(b => (b.title || '') + ((b.pages || []).every(tutorSinTexto) ? ' (PDF escaneado: sin texto extraído)' : '')).filter(Boolean);
   const palabras = (lbNrm(pregunta).match(/[a-z0-9]+/g) || [])
@@ -69,17 +94,17 @@ function tutorContext(pregunta) {
         `El número es el de página del PDF original, que puede no coincidir con el número impreso en la hoja: si ves otro número impreso, aclaralo. ` +
         `Si hay más de un documento con ese nombre (ediciones distintas), contá qué hay en cada uno por separado, indicando el título completo.` +
         (faltan.length ? ` NO hay cargada ninguna parte que contenga la página ${faltan.join(', ')}: decíselo al usuario (las partes cargadas cubren: ${cubre}).` : '');
-      return { texto: partes.join('\n\n'), fuentes, libros, paginas: paginas.slice(0, 4), aviso, maxImgs: 4, forzarVision: sinTexto.length > 0 };
+      return { texto: partes.join('\n\n'), fuentes, libros, paginas: paginas.slice(0, 4), refs: paginas.slice(0, 12), aviso, maxImgs: 4, forzarVision: sinTexto.length > 0 };
     }
   }
 
   // A) La pregunta nombra un documento: se le mandan sus páginas (todas si son pocas) en vez de buscar palabras sueltas en todos los libros.
   const named = tutorBookByName(pregunta);
   if (named.length) {
-    const per = Math.floor(TUTOR_BUDGET / named.length), partes = [], fuentes = [], paginas = [], sinTexto = [];
+    const per = Math.floor(TUTOR_BUDGET / named.length), partes = [], fuentes = [], paginas = [], sinTexto = [], refs = [];
     for (const b of named) {
       const all = (b.pages || []).map((t, i) => ({ p: i + 1, t: t || '' })), conTexto = all.filter(x => !tutorSinTexto(x.t));
-      if (!conTexto.length) { sinTexto.push(b.title); for (let i = 1; i <= Math.min(4, b.npages || all.length || 1); i++) paginas.push({ b: b.id, bt: b.title, p: i }); continue; }
+      if (!conTexto.length) { sinTexto.push(b.title); for (let i = 1; i <= Math.min(4, b.npages || all.length || 1); i++){ paginas.push({ b: b.id, bt: b.title, p: i }); refs.push(tutorRef(b.id, i, b.title)); } continue; }
       let elegidas = conTexto;
       if (conTexto.reduce((a, x) => a + Math.min(x.t.length, TUTOR_PAGE), 0) > per) {                 // documento largo: las primeras páginas + las que más coinciden con la pregunta
         const tit = new Set(lbNrm(b.title).match(/[a-z0-9]+/g) || []);
@@ -90,15 +115,16 @@ function tutorContext(pregunta) {
       }
       elegidas.forEach(x => partes.push(`--- DOCUMENTO: "${b.title}" (Página ${x.p}) ---\n${x.t.slice(0, TUTOR_PAGE)}`));
       elegidas.slice(0, 4).forEach(x => paginas.push({ b: b.id, bt: b.title, p: x.p }));
+      elegidas.forEach(x => refs.push(tutorRef(b.id, x.p, b.title)));
       fuentes.push(`${b.title} (pág. ${elegidas[0].p}${elegidas.length > 1 ? '-' + elegidas[elegidas.length - 1].p : ''})`);
     }
     const aviso = `AVISO: el usuario se refiere al documento "${named.map(b => b.title).join('" / "')}", que SÍ está cargado en la biblioteca.` +
       (sinTexto.length ? ` De "${sinTexto.join('", "')}" no hay texto extraído (es un PDF escaneado o de imágenes): leelo de las imágenes de las páginas que acompañan la consulta.` : '');
-    return { texto: partes.join('\n\n'), fuentes: fuentes.concat(sinTexto.map(t => t + ' (imágenes)')), libros, paginas: paginas.slice(0, 4), aviso, maxImgs: 4, forzarVision: sinTexto.length > 0 };
+    return { texto: partes.join('\n\n'), fuentes: fuentes.concat(sinTexto.map(t => t + ' (imágenes)')), libros, paginas: paginas.slice(0, 4), refs: refs.slice(0, 12), aviso, maxImgs: 4, forzarVision: sinTexto.length > 0 };
   }
 
   // B) Búsqueda normal por palabras en el contenido de los libros.
-  if (!palabras.length) return { texto: '', fuentes: [], libros };
+  if (!palabras.length) return { texto: '', fuentes: [], libros, refs: [] };
   const Q = { strong: [...new Set(palabras)], weak: [], mode: 'any' };
   const hits = [];
   for (const pg of LIB.pages) {
@@ -114,7 +140,7 @@ function tutorContext(pregunta) {
 
   const fuentes = top.map(h => `${h.pg.bt} (pág. ${h.pg.p})`);
   const paginas = top.map(h => ({ b: h.pg.b, bt: h.pg.bt, p: h.pg.p }));
-  return { texto, fuentes, libros, paginas };
+  return { texto, fuentes, libros, paginas, refs: top.map(h => tutorRef(h.pg.b, h.pg.p, h.pg.bt)) };
 }
 
 // Memoria de la conversación: a Gemini se le mandan los últimos intercambios para que entienda "¿y el ítem b?", "con otros números", etc.
@@ -140,7 +166,7 @@ function tutorMemory() {
 }
 function tutorSaveSession() {
   try {
-    const h = TUTOR.history.filter(m => !m.live).slice(-20).map(m => ({ role: m.role, text: String(m.text || '').replace(/\[\[FIG:\d+\]\]/g, ''), fuentes: m.fuentes, vistas: m.vistas, calcs: m.calcs, draw: m.draw }));
+    const h = TUTOR.history.filter(m => !m.live).slice(-20).map(m => ({ role: m.role, text: String(m.text || '').replace(/\[\[FIG:\d+\]\]/g, ''), fuentes: m.fuentes, refs: m.refs, vistas: m.vistas, calcs: m.calcs, draw: m.draw }));
     sessionStorage.setItem('tutor_hist', JSON.stringify(h));
   } catch (e) {}
 }
@@ -264,7 +290,7 @@ REGLAS ESTRICTAS:
 
 TAREA: esto es un problema para resolver con el Teorema de Pitágoras (si el usuario pidió que lo inventes, creá uno acorde al pedido y escribí el enunciado completo; si en realidad no se resuelve con Pitágoras, decilo y resolvelo con el método correcto). Respondé en este orden: 1) el enunciado (breve); 2) la FIGURA representativa del enunciado en un bloque \`\`\`svg, sin el resultado; 3) la resolución paso a paso con Pitágoras, verificando el resultado; 4) la respuesta final en una oración con unidades.` : '';
   // Mensaje "en vivo" que se va completando mientras llega la respuesta
-  const live = { role: 'ai', text: '', fuentes: ctx.fuentes, live: true };
+  const live = { role: 'ai', text: '', fuentes: ctx.fuentes, refs: ctx.refs, live: true };
   TUTOR.history.push(live);
   renderTutor();
   const shown = t => {
@@ -745,7 +771,7 @@ function renderTutor() {
           ${msg.imgs?.length ? '<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">' + msg.imgs.map(u => '<img src="' + u + '" style="max-height:140px;max-width:100%;border-radius:8px;border:1px solid var(--bd)">').join('') + '</div>' : ''}
           ${msg.live ? `<div class="tu-msg" id="tu-live" style="margin-top:4px;white-space:pre-wrap">${esc(msg.text || '⏳ Pensando…')}</div>` : tutorBodyHtml(msg, idx)}
           ${msg.calcs?.length ? '<details class="note" style="margin-top:8px"><summary>🧮 ' + msg.calcs.length + ' cálculo(s) hechos con la calculadora</summary>' + msg.calcs.map(c => esc(c.e) + ' = <b>' + esc(c.r) + '</b>').join('<br>') + '</details>' : ''}
-          ${msg.fuentes?.length ? `<div class="note" style="margin-top:8px">📚 <b>Páginas consultadas:</b> ${esc(msg.fuentes.join(' · '))}${msg.vistas?.length ? '<br>👁 <b>Vistas como imagen:</b> ' + esc(msg.vistas.join(' · ')) : ''}</div>` : ''}
+          ${msg.fuentes?.length ? `<div class="note" style="margin-top:8px">📚 <b>Páginas consultadas</b>${msg.refs?.length ? ' (tocá una para abrirla; ➕ la agrega a tu guía):' : ':'} ${msg.refs?.length ? tutorRefsHtml(msg.refs) : esc(msg.fuentes.join(' · '))}${msg.vistas?.length ? '<br>👁 <b>Vistas como imagen:</b> ' + esc(msg.vistas.join(' · ')) : ''}</div>` : ''}
         </div>
       `).join('') : '<p class="note">Escribí una duda abajo. Por ejemplo: <i>"Explicame cómo resolver ecuaciones cuadráticas según mis libros"</i> o <i>"Armame 3 ejercicios similares a los de la página 14 de Pitágoras"</i>. Con <b>📐 Resolver y dibujar</b> pegás un problema (o pedís que invente uno) y te arma la figura.</p>'}
     </div>
@@ -769,6 +795,7 @@ function renderTutor() {
     });
   }
 
+  tutorBindRefs(document.getElementById('tu-chat'));
   tutorBindKey();
   const nw = $('#tu-new');
   if (nw) nw.onclick = () => { if (TUTOR.busy) return; TUTOR.history = []; TUTOR.imgs = []; tutorSaveSession(); renderTutor(); };
