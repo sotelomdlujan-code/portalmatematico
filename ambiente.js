@@ -14,7 +14,22 @@
   const MAXI = 3;                                                // fotos por consulta
   const azar = a => Array.isArray(a) ? a[Math.floor(Math.random() * a.length)] : a;
   const BIBLIO = ['lib','guides'];                               // pestañas que van en la biblioteca
-  const KIOSCO = ['tutor'];                                      // y en el kiosco; el resto, en el aula
+  const KIOSCO = ['tutor'];                                      // y en el kiosco
+  /* Escenas propias de cada pestaña (si una pestaña no figura acá, usa el aula de siempre).
+     Medidas en píxeles de la imagen original (768 de ancho):
+       H  = alto que se muestra (se recorta justo donde empieza el frente del mostrador, así la barra de botones sigue el mueble)
+       pz = pizarrón o pantalla donde se escribe (x, y, ancho, alto, tamaño de letra en cqw, tono 'dark'/'light', fondo, max = largo máximo del ejercicio)
+       av = dónde se para la Profe: cx = centro, by = dónde apoya (pie), h = alto, s = 'r' si se ancla a la derecha, i = 'a la izquierda' al entrar
+       fr = desde qué alto el mostrador se dibuja POR DELANTE de ella (queda parada detrás)
+       bub = globo de diálogo: s = 'l' izquierda / 'r' derecha, b = % desde abajo, w = % de ancho · bar = colores de la barra */
+  const ESC = {
+    planificaciones:{H:925, pz:{x:272, y:367, w:236, h:90, fs:2.6, tone:'dark', bg:'radial-gradient(ellipse at 40% 30%,#0a4a2d,#06361f)', max:62, noT:1}, av:{cx:400, by:830, h:337}, fr:808, bub:{s:'l', b:19, w:33}, bar:['#994e33', '#773c27'], bgc:'#d9a07a'},
+    examenes:{H:975, pz:{x:150, y:488, w:372, h:112, fs:3.3, tone:'dark', bg:'rgba(6,58,40,.93)', noT:1}, av:{cx:612, by:880, h:337, s:'r'}, fr:858, bub:{s:'l', b:6, w:33}, bar:['#a2522c', '#7e4021'], bgc:'#e8b07a'},
+    tareas:{H:870, pz:{x:196, y:402, w:350, h:250, fs:4.3, tone:'light', bg:'radial-gradient(ellipse at 50% 40%,#fbe9d3,#f5dcc2)'}, av:{cx:650, by:815, h:337, s:'r'}, fr:790, bub:{s:'l', b:8, w:40}, bar:['#783726', '#5d2a1d'], bgc:'#f0d9b5'},
+    materiales:{H:880, pz:{x:183, y:428, w:415, h:236, fs:3.2, tone:'light', bg:'#ebeff2', list:1, padL:7.4}, av:{cx:105, by:822, h:337}, fr:790, bub:{s:'r', b:7, w:34}, bar:['#7a3d29', '#5f2f1f'], bgc:'#f0d9b5'},
+    consultas:{H:925, pz:{x:270, y:332, w:240, h:154, fs:3, tone:'dark', bg:'radial-gradient(ellipse at 40% 30%,#0a4a2d,#06361f)'}, av:{cx:400, by:830, h:337}, fr:810, bub:{s:'l', b:19, w:33}, bar:['#964a30', '#753925'], bgc:'#d9a07a'}
+  };
+  const ESCENAS = {plans:'planificaciones', exams:'examenes', gen:'examenes', tasks:'tareas', materials:'materiales', consultas:'consultas'};
   const SALUDO = {
     tasks:'¡Hola! Acá ves tus tareas y cuándo se entregan 🌟', materials:'Acá está el material para estudiar 📚', consultas:'¿Tenés una duda? Escribila y te respondo 💬',
     plans:'Organicemos las clases 📘', exams:'Preparemos las evaluaciones ✏️', gen:'Armá tu examen con ejercicios al azar 🧮',
@@ -32,8 +47,9 @@
   const ayer = () => new Date(Date.now() - 864e5).toLocaleDateString('en-CA');
   const hash = t => { let h = 2166136261; for(const c of String(t)){ h ^= c.charCodeAt(0); h = Math.imul(h, 16777619); } return h >>> 0; };
   const semilla = n => { let a = n >>> 0; return () => { a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; };
-  const modo = () => { const t = document.body.dataset.tab; return BIBLIO.includes(t) ? 'biblioteca' : KIOSCO.includes(t) ? 'kiosco' : 'aula'; };
-  const st = {root:null, mini:null, chat:null, ia:null, iaT:0, iaK:'', busy:false, imgs:[], t2:null, key:'', tab:'', ej:null, sug:null, timer:null, bt:null, poll:null};
+  const modo = () => { const t = document.body.dataset.tab; return BIBLIO.includes(t) ? 'biblioteca' : KIOSCO.includes(t) ? 'kiosco' : ESCENAS[t] || 'aula'; };
+  const tipo = () => { const m = modo(); return (m === 'biblioteca' || m === 'kiosco') ? 'sug' : m === 'materiales' ? 'mat' : 'ej'; };   // qué widget lleva la escena
+  const st = {escena:'', root:null, mini:null, chat:null, ia:null, iaT:0, iaK:'', busy:false, imgs:[], t2:null, key:'', tab:'', ej:null, sug:null, timer:null, bt:null, poll:null};
 
   /* ---------- datos de la app (se leen de app.js al momento de usarlos) ---------- */
   function info(){
@@ -43,7 +59,7 @@
   }
 
   /* ---------- ejercicio del día (reusa el generador de exámenes) ---------- */
-  function ejercicio(seed){
+  function ejercicio(seed, max){
     const ok = typeof GEN !== 'undefined' ? TEMAS.filter(k => typeof GEN[k] === 'function') : [];
     const pick = seed != null ? semilla(seed ^ 0x9e3779b9) : Math.random, old = Math.random;
     if(seed != null) Math.random = semilla(seed);                    // misma cuenta para todos durante el día
@@ -52,15 +68,15 @@
       for(let i = 0; i < ok.length; i++){
         try{
           const r = GEN[ok[(start + i) % ok.length]](Math.floor(pick() * 2)), plano = String(r[0]).replace(/<[^>]+>/g, '');
-          if(plano.length <= 95 && !/observ|figura/i.test(plano)) return {q:String(r[0]), a:String(r[1])};
+          if(plano.length <= (max || 95) && !/observ|figura/i.test(plano)) return {q:String(r[0]), a:String(r[1])};
         }catch(e){}
       }
     } finally { Math.random = old; }
     return {q:'Calculá: <b>7 · 8 − 6</b>', a:'50'};
   }
   function ejHoy(i){
-    const key = hoy() + '|' + i.cid;
-    if(!st.ej || st.ej.dia !== key) st.ej = {dia:key, ...ejercicio(hash(key)), shown:false, done:false, extra:false};      // uno por día y por curso
+    const mx = (ESC[modo()] && ESC[modo()].pz.max) || 95, key = hoy() + '|' + i.cid + '|' + mx;
+    if(!st.ej || st.ej.dia !== key) st.ej = {dia:key, ...ejercicio(hash(key), mx), shown:false, done:false, extra:false};      // uno por día y por curso (en un pizarrón chico, más corto)
     return st.ej;
   }
 
@@ -88,6 +104,30 @@
   }
 
   /* ---------- la escena ---------- */
+  function cssEscenas(){
+    const pc = v => (v * 100).toFixed(2) + '%', aw = h => h * 743 / 1034;     // ancho de la Profe según su alto
+    return `
+@keyframes esc-entra-d{from{transform:translateX(70%);opacity:0}to{transform:none;opacity:1}}
+@keyframes esc-entra-i{from{transform:translateX(-70%);opacity:0}to{transform:none;opacity:1}}
+.av-entra-d{animation:esc-entra-d .75s ease-out}.av-entra-i{animation:esc-entra-i .75s ease-out}
+.mt-r{display:flex;gap:.55em;align-items:center;width:100%;text-align:left;padding:.28em .45em;border-bottom:1px solid rgba(18,38,61,.14)}
+.mt-r span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:700}
+.mt-t{font-size:.8em;font-weight:800;color:#2a6fa8;letter-spacing:.03em;margin-bottom:.15em}` + Object.keys(ESC).map(k => {
+      const c = ESC[k], p = c.pz, a = c.av, H = c.H, w = aw(a.h), clara = p.tone === 'light';
+      const pos = a.s === 'r' ? `right:${pc(Math.max(0, (768 - (a.cx + w / 2)) / 768))}` : `left:${pc(Math.max(0, (a.cx - w / 2) / 768))}`;
+      const izq = c.bub.s === 'l';
+      return `
+.esc-${k} .esc-vista,.esc-${k} .esc-fr{background-image:url(img/${k}.webp);aspect-ratio:768/${H}}
+.esc-${k} .esc-vista{background-color:${c.bgc}}
+.esc-${k} .esc-fr{display:block;clip-path:inset(${pc(c.fr / H)} 0 0 0)}
+.esc-${k} .esc-pz{left:${pc(p.x / 768)};top:${pc(p.y / H)};width:${pc(p.w / 768)};height:${pc(p.h / H)};font-size:${p.fs}cqw;background:${p.bg};border-radius:4px;${clara ? 'color:#2b2118;text-shadow:none;' : ''}${p.list ? `justify-content:flex-start;padding:0 0 0 ${p.padL || 0}cqw;` : ''}}
+${clara ? `.esc-${k} .pz-t{color:#8a4b12}.esc-${k} .pz-q b{color:#1f5fa8}.esc-${k} .pz-a{color:#1c7a3e}\n` : ''}${p.noT ? `.esc-${k} .pz-t{display:none}\n` : ''}.esc-${k} .esc-av{${pos};bottom:${pc((H - a.by) / H)};height:${pc(a.h / H)}}
+.esc-${k} .esc-bub{${izq ? 'left' : 'right'}:2%;bottom:${c.bub.b}%;max-width:${c.bub.w}%}
+.esc-${k} .esc-bub::after{${izq ? 'right:-8px;bottom:14px;border-top:2px solid #3b2a1a;border-right:2px solid #3b2a1a' : 'left:-8px;bottom:14px;border-left:2px solid #3b2a1a;border-bottom:2px solid #3b2a1a'}}
+.esc-${k} .esc-bar{background:linear-gradient(${c.bar[0]},${c.bar[1]})}.esc-${k} .esc-ask{background:${c.bar[1]}}`;
+    }).join('');
+  }
+
   function css(){
     if(document.getElementById('esc-css')) return;
     const s = document.createElement('style'); s.id = 'esc-css';
@@ -174,7 +214,7 @@
 .esc-ths img{width:88px;height:88px;object-fit:cover;border-radius:8px;border:1px solid var(--bd)}
 .esc-warn{flex-basis:100%;font:600 .78rem/1.3 var(--fb);color:#fff4de;text-align:center}
 .esc-info{font:700 .88rem var(--fb);color:#fff4de}
-@media print{.esc,.esc-mini,.esc-chat{display:none!important}}`;
+@media print{.esc,.esc-mini,.esc-chat{display:none!important}}` + cssEscenas();
     document.head.appendChild(s);
   }
 
@@ -226,7 +266,7 @@
   const hideBubble = () => { clearTimeout(st.bt); q('.esc-bub').hidden = true; };
   function base(){                                                  // lo que queda en pantalla cuando no hay una reacción: el mensaje de la Profe al curso
     const i = info();
-    if(modo() === 'aula' && i.aviso && ssGet('aula_av_x') !== String(hash(i.aviso))) showBubble(i.aviso, 0, true); else hideBubble();
+    if(tipo() !== 'sug' && i.aviso && ssGet('aula_av_x') !== String(hash(i.aviso))) showBubble(i.aviso, 0, true); else hideBubble();
   }
   function reaccionar(estado, texto, ms){
     if(!st.root) return; ms = ms || 3200; estado = azar(estado);
@@ -239,15 +279,16 @@
     ver(){ st.ej.shown = true; pizAula(); barAula(); },
     si(){ st.ej.done = true; const n = sumarRacha(); pizAula(); barAula(); reaccionar(['festejo', 'risa', 'bien'], n > 1 ? '¡Muy bien! ' + n + ' días seguidos 🔥' : '¡Muy bien! Eso es practicar 💪'); },
     no(){ st.ej.done = true; pizAula(); barAula(); reaccionar('error', 'No pasa nada: mirá cómo se hace y probá con otro 💪', 4200); },
-    otro(){ st.ej = {dia:st.ej.dia, ...ejercicio(null), shown:false, done:false, extra:true}; pizAula(); barAula(); },
+    otro(){ st.ej = {dia:st.ej.dia, ...ejercicio(null, (ESC[modo()] && ESC[modo()].pz.max) || 95), shown:false, done:false, extra:true}; pizAula(); barAula(); },
     msg(){ const i = info(); q('.esc-bar').innerHTML = `<input class="esc-in" maxlength="160" placeholder="Mensaje de la Profe para tu curso" aria-label="Mensaje para el curso" value="${E(i.aviso)}"><button type="button" class="esc-b ok" data-a="gm">Guardar</button><button type="button" class="esc-b" data-a="cm">Cancelar</button>`; q('.esc-in').focus(); },
-    cm(){ barAula(); },
+    cm(){ barActual(); },
+    todo(){ const m = document.getElementById('main'), t = [...m.children].find(x => x !== st.root && x !== st.chat && x !== st.mini); if(t) t.scrollIntoView({behavior:'smooth', block:'start'}); },
     async gm(){
       const i = info(), inp = q('.esc-in'); if(!inp || !i.cid) return; const txt = inp.value.trim().slice(0, 160);
       try{
         await fs.collection('courses').doc(i.cid).update({pizarra:txt});
         const c = courses.find(x => x.id === i.cid); if(c) c.pizarra = txt;
-        ssSet('aula_av_x', ''); barAula(); base(); reaccionar('ok', txt ? '¡Mensaje publicado!' : 'Mensaje borrado', 1800);
+        ssSet('aula_av_x', ''); barActual(); base(); reaccionar('ok', txt ? '¡Mensaje publicado!' : 'Mensaje borrado', 1800);
       }catch(e){ console.warn(e); reaccionar('error', 'No se pudo guardar. Probá de nuevo.', 2500); }
     },
     async iaal(){
@@ -258,24 +299,44 @@
     },
     async iaon(){
       if(!confirm('Se va a compartir tu clave de IA con las personas que entren a tus cursos. ¿Querés activarlo?')) return;
-      const r = await ProfeIA.activarAlumnos(true); barAula();
+      const r = await ProfeIA.activarAlumnos(true); barActual();
       reaccionar(r.ok ? ['risa', 'ok'] : 'error', r.ok ? '¡Listo! Tus alumnos ya pueden preguntarme 💛' : r.error, 3800);
     },
-    async iaoff(){ const r = await ProfeIA.activarAlumnos(false); barAula(); reaccionar(r.ok ? 'ok' : 'error', r.ok ? 'Listo: los alumnos ya no pueden usar la IA.' : r.error, 3000); },
+    async iaoff(){ const r = await ProfeIA.activarAlumnos(false); barActual(); reaccionar(r.ok ? 'ok' : 'error', r.ok ? 'Listo: los alumnos ya no pueden usar la IA.' : r.error, 3000); },
     abrir(){ const s = st.sug; if(!s || typeof lbViewer !== 'function') return; reaccionar(['bien', 'ok'], '¡Buena elección! 📖', 1800); lbViewer(s.id, s.p); },
     otra(){ st.sug = sugerir(true); pizKiosco(); }
   };
+  function fitPz(){                                                  // si el texto no entra en el pizarrón, achica la letra hasta que entre
+    const el = q('.esc-pz'), c = ESC[modo()]; if(!el) return;
+    if(!c){ el.style.fontSize = ''; return; }
+    let fs = c.pz.fs; el.style.fontSize = fs + 'cqw';
+    if(!el.clientHeight) return;
+    let n = 0; while(el.scrollHeight > el.clientHeight + 1 && fs > 2 && n++ < 40){ fs -= 0.12; el.style.fontSize = fs.toFixed(2) + 'cqw'; }
+  }
+  const mats = () => { try{ return ((typeof data !== 'undefined' && data.materials) || []).slice(0, 5); }catch(e){ return []; } };
+  const icoMat = m => { try{ const f = (m.localFiles || [])[0]; if(f && typeof fileIco === 'function') return fileIco(f); }catch(e){} return '📄'; };
+  function pizMat(){                                                 // la pantalla de la “Zona de descargas” muestra el material real del curso
+    const l = mats();
+    q('.esc-pz').innerHTML = l.length ? `<div class="mt-t">📥 LO ÚLTIMO DEL CURSO</div>` + l.map(m => `<div class="mt-r"><span>${icoMat(m)}</span><span>${E(m.title || 'Sin título')}</span></div>`).join('')
+      : `<div class="pz-q" style="margin:auto">Todavía no hay material en este curso</div>`;
+    fitPz();
+  }
+  const extras = i => (i.prof && i.cid ? `<button type="button" class="esc-b" data-a="msg">💬 Mensaje de la Profe</button>` : '') + (i.prof && window.ProfeIA ? `<button type="button" class="esc-b" data-a="iaal">🤖 IA para alumnos</button>` : '');
+  function barMat(){
+    q('.esc-bar').innerHTML = `<button type="button" class="esc-b ok" data-a="todo">⬇ Ver todo el material</button>` + extras(info());
+  }
+  const barActual = () => tipo() === 'mat' ? barMat() : barAula();
   function pizAula(){
     const e = st.ej;
     q('.esc-pz').innerHTML = `<div class="pz-t">${e.extra ? '➕ Otro ejercicio' : '✏️ Ejercicio del día'}</div><div class="pz-q">${e.q}</div>${e.shown ? `<div class="pz-a">→ ${e.a}</div>` : ''}`;
+    fitPz();
   }
   function barAula(){
     const e = st.ej, i = info();
     let h = !e.shown ? `<button type="button" class="esc-b" data-a="ver">👀 Ver respuesta</button>`
       : !e.done ? `<button type="button" class="esc-b ok" data-a="si">🎉 Me salió</button><button type="button" class="esc-b" data-a="no">🤔 No me salió</button>`
       : `<button type="button" class="esc-b" data-a="otro">➕ Otro ejercicio</button>`;
-    if(i.prof && i.cid) h += `<button type="button" class="esc-b" data-a="msg">💬 Mensaje de la Profe</button>`;
-    if(i.prof && window.ProfeIA) h += `<button type="button" class="esc-b" data-a="iaal">🤖 IA para alumnos</button>`;
+    h += extras(i);
     q('.esc-bar').innerHTML = h + `<span class="esc-chip" title="Días seguidos practicando">🔥 ${racha()}</span>`;
   }
   function pizKiosco(){
@@ -285,14 +346,22 @@
       : `<div class="pz-t">📚 Biblioteca</div><div class="pz-q">${E(TIPS[t] || TIPS.lib)}</div>`;
     q('.esc-bar').innerHTML = `<button type="button" class="esc-b ok" data-a="abrir" ${s ? '' : 'disabled'}>📖 Abrir esa página</button><button type="button" class="esc-b" data-a="otra" ${s ? '' : 'disabled'}>🎲 Otra</button>`;
   }
+  const TODAS = ['aula', 'kiosco', 'biblioteca', ...Object.keys(ESC)];
+  function entra(m){                                                 // al cambiar de escena, la Profe entra caminando desde el costado más cercano
+    const im = q('.esc-av'), c = ESC[m]; if(!im) return;
+    const lado = c ? (c.av.cx > 384 ? 'd' : 'i') : (m === 'aula' ? 'd' : 'i');      // la que está a la derecha entra por la derecha, y así
+    im.classList.remove('av-entra-d', 'av-entra-i'); void im.offsetWidth; im.classList.add('av-entra-' + lado);
+  }
   function paint(){
-    const m = modo(), i = info();
-    st.root.classList.toggle('esc-aula', m === 'aula'); st.root.classList.toggle('esc-kiosco', m === 'kiosco'); st.root.classList.toggle('esc-biblioteca', m === 'biblioteca');
+    const m = modo(), i = info(), t = tipo();
+    TODAS.forEach(c => st.root.classList.toggle('esc-' + c, c === m));
+    if(st.escena !== m){ if(st.escena) entra(m); st.escena = m; }
     clearInterval(st.poll);
-    if(m === 'aula'){ ejHoy(i); pizAula(); barAula(); }
+    if(t === 'ej'){ ejHoy(i); pizAula(); barAula(); }
+    else if(t === 'mat'){ pizMat(); barMat(); }
     else {
       st.sug = st.sug || sugerir(false); pizKiosco();
-      if(!st.sug){ let n = 0; st.poll = setInterval(() => { if(++n > 40 || modo() === 'aula'){ clearInterval(st.poll); return; } const s = sugerir(false); if(s){ clearInterval(st.poll); st.sug = s; pizKiosco(); } }, 1500); }
+      if(!st.sug){ let n = 0; st.poll = setInterval(() => { if(++n > 40 || tipo() !== 'sug'){ clearInterval(st.poll); return; } const s = sugerir(false); if(s){ clearInterval(st.poll); st.sug = s; pizKiosco(); } }, 1500); }
     }
     base(); askUI();
   }
@@ -394,10 +463,10 @@
   function sync(){
     const main = document.getElementById('main'); if(!main || !st.root) return;
     if(main.firstElementChild !== st.root) main.prepend(st.root, st.chat, st.mini);
-    const i = info(), t = document.body.dataset.tab || '', key = [modo(), i.cid, i.aviso, i.prof].join('|');
+    const i = info(), t = document.body.dataset.tab || '', key = [modo(), i.cid, i.aviso, i.prof, modo() === 'materiales' ? mats().map(m => m.id + (m.title || '')).join(',') : ''].join('|');
     aplicarVisible();
     if(key !== st.key){ st.key = key; paint(); }
-    if(t !== st.tab){ st.tab = t; const k = 'aula_hi_' + t; if(SALUDO[t] && !ssGet(k) && !(modo() === 'aula' && i.aviso)){ ssSet(k, '1'); showBubble(SALUDO[t], 4500, false); } }
+    if(t !== st.tab){ st.tab = t; const k = 'aula_hi_' + t; if(SALUDO[t] && !ssGet(k) && !(tipo() !== 'sug' && i.aviso)){ ssSet(k, '1'); showBubble(SALUDO[t], 4500, false); } }
   }
   function init(){
     const main = document.getElementById('main'); if(!main) return;
