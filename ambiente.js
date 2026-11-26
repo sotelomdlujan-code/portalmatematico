@@ -20,14 +20,14 @@
        H  = alto que se muestra (se recorta justo donde empieza el frente del mostrador, así la barra de botones sigue el mueble)
        pz = pizarrón o pantalla donde se escribe (x, y, ancho, alto, tamaño de letra en cqw, tono 'dark'/'light', fondo, max = largo máximo del ejercicio)
        av = dónde se para la Profe: cx = centro, by = dónde apoya (pie), h = alto, s = 'r' si se ancla a la derecha, i = 'a la izquierda' al entrar
-       fr = desde qué alto el mostrador se dibuja POR DELANTE de ella (queda parada detrás)
+       fr = desde qué alto el mostrador se dibuja POR DELANTE de ella (queda parada detrás): un número, o una línea quebrada [[x,y],…] que sigue el borde real del escritorio
        bub = globo de diálogo: s = 'l' izquierda / 'r' derecha, b = % desde abajo, w = % de ancho · bar = colores de la barra */
   const ESC = {
-    planificaciones:{H:925, pz:{x:272, y:367, w:236, h:90, fs:2.6, tone:'dark', bg:'radial-gradient(ellipse at 40% 30%,#0a4a2d,#06361f)', max:62, noT:1}, av:{cx:400, by:830, h:337}, fr:808, bub:{s:'l', b:19, w:33}, bar:['#994e33', '#773c27'], bgc:'#d9a07a'},
-    examenes:{H:975, pz:{x:150, y:488, w:372, h:112, fs:3.3, tone:'dark', bg:'rgba(6,58,40,.93)', noT:1}, av:{cx:612, by:880, h:337, s:'r'}, fr:858, bub:{s:'l', b:6, w:33}, bar:['#a2522c', '#7e4021'], bgc:'#e8b07a'},
-    tareas:{H:870, pz:{x:196, y:402, w:350, h:250, fs:4.3, tone:'light', bg:'radial-gradient(ellipse at 50% 40%,#fbe9d3,#f5dcc2)'}, av:{cx:650, by:815, h:337, s:'r'}, fr:790, bub:{s:'l', b:8, w:40}, bar:['#783726', '#5d2a1d'], bgc:'#f0d9b5'},
-    materiales:{H:880, pz:{x:183, y:428, w:415, h:236, fs:3.2, tone:'light', bg:'#ebeff2', list:1, padL:7.4}, av:{cx:105, by:822, h:337}, fr:790, bub:{s:'r', b:7, w:34}, bar:['#7a3d29', '#5f2f1f'], bgc:'#f0d9b5'},
-    consultas:{H:925, pz:{x:270, y:332, w:240, h:154, fs:3, tone:'dark', bg:'radial-gradient(ellipse at 40% 30%,#0a4a2d,#06361f)'}, av:{cx:400, by:830, h:337}, fr:810, bub:{s:'l', b:19, w:33}, bar:['#964a30', '#753925'], bgc:'#d9a07a'}
+    planificaciones:{H:925, pz:{x:272, y:367, w:236, h:90, fs:2.6, tone:'dark', bg:'radial-gradient(ellipse at 40% 30%,#0a4a2d,#06361f)', max:62, noT:1}, av:{cx:410, by:842, h:337}, fr:819, bub:{s:'l', b:19, w:33}, bar:['#994e33', '#773c27'], bgc:'#d9a07a'},
+    examenes:{H:975, pz:{x:345, y:488, w:290, h:112, fs:3.3, tone:'dark', bg:'rgba(6,58,40,.93)', noT:1}, av:{cx:200, by:882, h:320}, fr:[[0, 858], [112, 858], [112, 842], [284, 842], [284, 858], [768, 858]], bub:{s:'r', b:5, w:30}, bar:['#a2522c', '#7e4021'], bgc:'#e8b07a'},
+    tareas:{H:870, pz:{x:196, y:402, w:407, h:250, fs:4, tone:'light', bg:'radial-gradient(ellipse at 50% 40%,#fbe9d3,#f5dcc2)', padB:13}, av:{cx:345, by:815, h:255}, fr:782, bub:{s:'l', b:8, w:33}, bar:['#783726', '#5d2a1d'], bgc:'#f0d9b5'},
+    materiales:{H:880, pz:{x:183, y:428, w:415, h:236, fs:3.2, tone:'light', bg:'#ebeff2', list:1, padL:7.4, rows:3}, av:{cx:465, by:815, h:240}, fr:790, bub:{s:'r', b:7, w:28}, bar:['#7a3d29', '#5f2f1f'], bgc:'#f0d9b5'},
+    consultas:{H:925, pz:{x:270, y:332, w:240, h:154, fs:3, tone:'dark', bg:'radial-gradient(ellipse at 40% 30%,#0a4a2d,#06361f)'}, av:{cx:410, by:842, h:337}, fr:819, bub:{s:'l', b:19, w:33}, bar:['#964a30', '#753925'], bgc:'#d9a07a'}
   };
   const ESCENAS = {plans:'planificaciones', exams:'examenes', gen:'examenes', tasks:'tareas', materials:'materiales', consultas:'consultas'};
   const SALUDO = {
@@ -119,8 +119,8 @@
       return `
 .esc-${k} .esc-vista,.esc-${k} .esc-fr{background-image:url(img/${k}.webp);aspect-ratio:768/${H}}
 .esc-${k} .esc-vista{background-color:${c.bgc}}
-.esc-${k} .esc-fr{display:block;clip-path:inset(${pc(c.fr / H)} 0 0 0)}
-.esc-${k} .esc-pz{left:${pc(p.x / 768)};top:${pc(p.y / H)};width:${pc(p.w / 768)};height:${pc(p.h / H)};font-size:${p.fs}cqw;background:${p.bg};border-radius:4px;${clara ? 'color:#2b2118;text-shadow:none;' : ''}${p.list ? `justify-content:flex-start;padding:0 0 0 ${p.padL || 0}cqw;` : ''}}
+.esc-${k} .esc-fr{display:block;clip-path:polygon(${(Array.isArray(c.fr) ? c.fr : [[0, c.fr], [768, c.fr]]).map(([x, y]) => pc(x / 768) + ' ' + pc(y / H)).join(',')},100% 100%,0 100%)}
+.esc-${k} .esc-pz{left:${pc(p.x / 768)};top:${pc(p.y / H)};width:${pc(p.w / 768)};height:${pc(p.h / H)};font-size:${p.fs}cqw;background:${p.bg};border-radius:4px;${clara ? 'color:#2b2118;text-shadow:none;' : ''}${p.list ? `justify-content:flex-start;padding:0 0 0 ${p.padL || 0}cqw;` : ''}${p.padB ? `padding-bottom:${p.padB}cqw;` : ''}}
 ${clara ? `.esc-${k} .pz-t{color:#8a4b12}.esc-${k} .pz-q b{color:#1f5fa8}.esc-${k} .pz-a{color:#1c7a3e}\n` : ''}${p.noT ? `.esc-${k} .pz-t{display:none}\n` : ''}.esc-${k} .esc-av{${pos};bottom:${pc((H - a.by) / H)};height:${pc(a.h / H)}}
 .esc-${k} .esc-bub{${izq ? 'left' : 'right'}:2%;bottom:${c.bub.b}%;max-width:${c.bub.w}%}
 .esc-${k} .esc-bub::after{${izq ? 'right:-8px;bottom:14px;border-top:2px solid #3b2a1a;border-right:2px solid #3b2a1a' : 'left:-8px;bottom:14px;border-left:2px solid #3b2a1a;border-bottom:2px solid #3b2a1a'}}
@@ -313,7 +313,7 @@ ${clara ? `.esc-${k} .pz-t{color:#8a4b12}.esc-${k} .pz-q b{color:#1f5fa8}.esc-${
     if(!el.clientHeight) return;
     let n = 0; while(el.scrollHeight > el.clientHeight + 1 && fs > 2 && n++ < 40){ fs -= 0.12; el.style.fontSize = fs.toFixed(2) + 'cqw'; }
   }
-  const mats = () => { try{ return ((typeof data !== 'undefined' && data.materials) || []).slice(0, 5); }catch(e){ return []; } };
+  const mats = () => { try{ return ((typeof data !== 'undefined' && data.materials) || []).slice(0, (ESC.materiales.pz.rows) || 5); }catch(e){ return []; } };
   const icoMat = m => { try{ const f = (m.localFiles || [])[0]; if(f && typeof fileIco === 'function') return fileIco(f); }catch(e){} return '📄'; };
   function pizMat(){                                                 // la pantalla de la “Zona de descargas” muestra el material real del curso
     const l = mats();
