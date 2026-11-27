@@ -49,7 +49,7 @@
   const semilla = n => { let a = n >>> 0; return () => { a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; };
   const modo = () => { const t = document.body.dataset.tab; return BIBLIO.includes(t) ? 'biblioteca' : KIOSCO.includes(t) ? 'kiosco' : ESCENAS[t] || 'aula'; };
   const tipo = () => { const m = modo(); return (m === 'biblioteca' || m === 'kiosco') ? 'sug' : m === 'materiales' ? 'mat' : 'ej'; };   // qué widget lleva la escena
-  const st = {escena:'', root:null, mini:null, chat:null, ia:null, iaT:0, iaK:'', busy:false, imgs:[], t2:null, key:'', tab:'', ej:null, sug:null, timer:null, bt:null, poll:null};
+  const st = {abierto:false, escena:'', root:null, mini:null, chat:null, ia:null, iaT:0, iaK:'', busy:false, imgs:[], t2:null, key:'', tab:'', ej:null, sug:null, timer:null, bt:null, poll:null};
 
   /* ---------- datos de la app (se leen de app.js al momento de usarlos) ---------- */
   function info(){
@@ -117,7 +117,7 @@
       const pos = a.s === 'r' ? `right:${pc(Math.max(0, (768 - (a.cx + w / 2)) / 768))}` : `left:${pc(Math.max(0, (a.cx - w / 2) / 768))}`;
       const izq = c.bub.s === 'l';
       return `
-.esc-${k} .esc-vista,.esc-${k} .esc-fr{background-image:url(img/${k}.webp);aspect-ratio:768/${H}}
+.esc-${k} .esc-vista,.esc-${k} .esc-fr{background-image:url(img/${k}.webp);aspect-ratio:768/${H};--h0:calc(100cqw*${H}/768)}
 .esc-${k} .esc-vista{background-color:${c.bgc}}
 .esc-${k} .esc-fr{display:block;clip-path:polygon(${(Array.isArray(c.fr) ? c.fr : [[0, c.fr], [768, c.fr]]).map(([x, y]) => pc(x / 768) + ' ' + pc(y / H)).join(',')},100% 100%,0 100%)}
 .esc-${k} .esc-pz{left:${pc(p.x / 768)};top:${pc(p.y / H)};width:${pc(p.w / 768)};height:${pc(p.h / H)};font-size:${p.fs}cqw;background:${p.bg};border-radius:4px;${clara ? 'color:#2b2118;text-shadow:none;' : ''}${p.list ? `justify-content:flex-start;padding:0 0 0 ${p.padL || 0}cqw;` : ''}${p.padB ? `padding-bottom:${p.padB}cqw;` : ''}}
@@ -135,9 +135,9 @@ ${clara ? `.esc-${k} .pz-t{color:#8a4b12}.esc-${k} .pz-q b{color:#1f5fa8}.esc-${
 .esc{width:min(100%,430px);margin:0 auto 18px;container-type:inline-size;border-radius:20px;overflow:hidden;border:3px solid #6b3a1a;background:#6b3a1a;box-shadow:0 10px 26px rgba(0,0,0,.28)}
 .esc[hidden],.esc-mini[hidden]{display:none}
 .esc-vista{position:relative;overflow:hidden;background-repeat:no-repeat;background-size:100% auto;background-position:top center;background-color:#c9a77a}
-.esc-aula .esc-vista{background-image:url(img/aula.webp);aspect-ratio:752/830}
-.esc-kiosco .esc-vista{background-image:url(img/kiosco.webp);aspect-ratio:768/810}
-.esc-biblioteca .esc-vista,.esc-biblioteca .esc-fr{background-image:url(img/biblioteca.webp);aspect-ratio:768/925}
+.esc-aula .esc-vista{background-image:url(img/aula.webp);aspect-ratio:752/830;--h0:calc(100cqw*830/752)}
+.esc-kiosco .esc-vista{background-image:url(img/kiosco.webp);aspect-ratio:768/810;--h0:calc(100cqw*810/768)}
+.esc-biblioteca .esc-vista,.esc-biblioteca .esc-fr{background-image:url(img/biblioteca.webp);aspect-ratio:768/925;--h0:calc(100cqw*925/768)}
 .esc-fr{display:none;position:absolute;inset:0;z-index:2;pointer-events:none;background-repeat:no-repeat;background-size:100% auto;background-position:top center}
 .esc-biblioteca .esc-fr{display:block;clip-path:inset(87% 0 0 0)}   /* el escritorio se dibuja por delante de la Profe: queda parada detrás del mostrador */
 .esc-pz{position:absolute;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;overflow:hidden;color:#f6f2e4;font:600 13px/1.25 var(--fd);font-size:3.7cqw;text-shadow:0 1px 0 rgba(0,0,0,.3);padding:1.2cqw}
@@ -186,21 +186,30 @@ ${clara ? `.esc-${k} .pz-t{color:#8a4b12}.esc-${k} .pz-q b{color:#1f5fa8}.esc-${
 .esc .esc-q:disabled{opacity:.85;color:#6b5844}
 .esc-send{min-width:48px;border-radius:12px;border:2px solid #4a2410;background:#c7f2a7;color:#4a2410;font-size:1.1rem;cursor:pointer;box-shadow:0 2px 0 #4a2410}
 .esc-send:disabled{opacity:.55;cursor:default}
-.esc.esc-open{border-radius:20px 20px 0 0;border-bottom-width:0;margin-bottom:0}
-.esc-chat{width:min(100%,430px);margin:0 auto 18px;border-radius:0 0 20px 20px;border:3px solid #6b3a1a;border-top:0;box-shadow:0 10px 26px rgba(0,0,0,.2);background:var(--sf);color:var(--tx);overflow:hidden}
-.esc-chat[hidden]{display:none}
-.esc-chat-h{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 12px;font:700 .9rem var(--fb);border-bottom:1px solid var(--bd)}
-.esc-lnk{border:0;background:none;color:var(--ac);cursor:pointer;font:700 .8rem var(--fb);padding:6px}
-.esc-msgs{max-height:min(62vh,480px);overflow-y:auto;padding:10px 12px 14px;display:flex;flex-direction:column;gap:10px}
+.esc-board{position:absolute;z-index:3;left:6%;right:6%;top:15.5%;bottom:3.5%;background:url(img/pizarron.webp) center/100% 100% no-repeat;color:#f6f2e4;font-family:var(--fd);display:flex;flex-direction:column;padding:7cqw 8.5cqw 10.5cqw;text-shadow:0 0 1px rgba(255,255,255,.35);animation:esc-baja .75s cubic-bezier(.2,.8,.25,1) both;transform-origin:50% 0}
+.esc-board[hidden]{display:none}
+@keyframes esc-baja{from{transform:translateY(-105%);opacity:.15}to{transform:none;opacity:1}}
+@keyframes esc-crece{from{height:var(--h0)}}
+/* con el pizarrón abierto la escena se estira, se esconden los widgets y la Profe pasa a la esquina (con los brazos cruzados) */
+.esc.esc-chatting .esc-vista{aspect-ratio:auto;height:clamp(130cqw,calc(100vh - 130px),179cqw);height:clamp(130cqw,calc(100svh - 130px),179cqw);animation:esc-crece .65s ease-out}
+.esc.esc-chatting .esc-pz,.esc.esc-chatting .esc-fr,.esc.esc-chatting .esc-bub,.esc.esc-chatting .esc-bar,.esc.esc-chatting .esc-hide{display:none!important}
+.esc.esc-chatting .esc-av{left:auto;right:-6cqw;bottom:-7cqw;height:38cqw;z-index:6}
+.esc-reabrir{position:absolute;top:6px;left:6px;z-index:4;border:0;border-radius:99px;padding:7px 13px;background:rgba(0,0,0,.52);color:#fff;font:700 .8rem var(--fb);cursor:pointer}
+.esc-reabrir[hidden]{display:none}
+.esc-chat-h{flex:none;display:flex;flex-wrap:nowrap;justify-content:space-between;align-items:center;gap:2cqw;color:#ffe28a;font:700 3.5cqw var(--fd);padding-bottom:1.4cqw;border-bottom:1.5px dashed rgba(255,255,255,.35);white-space:nowrap}.esc-chat-h span{display:flex;gap:.5cqw;flex:none}
+.esc-lnk{border:0;background:none;color:#cdeede;cursor:pointer;font:700 3cqw var(--fd);padding:1cqw 1.3cqw;border-radius:8px;text-shadow:inherit;white-space:nowrap}
+.esc-lnk:hover{background:rgba(255,255,255,.12)}
+.esc-msgs{flex:1;min-height:0;overflow-y:auto;padding:2cqw 1cqw 24cqw 0;display:flex;flex-direction:column;gap:3.2cqw;font-size:3.9cqw;line-height:1.42;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.4) transparent}
 .esc-msgs[hidden]{display:none}
-.esc-m{display:flex;gap:8px;align-items:flex-start}
-.esc-m.me{justify-content:flex-end}
-.esc-mt{padding:9px 12px;max-width:90%;overflow-wrap:anywhere;white-space:pre-wrap;line-height:1.45;font-size:.93rem}
-.esc-m.me .esc-mt{background:var(--plans-bg);border-radius:14px 14px 4px 14px}
-.esc-m.ia .esc-mt{background:var(--sf2);border:1px solid var(--bd);border-radius:14px 14px 14px 4px}
-.esc-mav{width:34px;height:34px;border-radius:50%;object-fit:cover;object-position:50% 12%;background:#f3d9b8;border:2px solid #4a2410;flex:none}
-.esc-note{font-size:.8rem;color:var(--mu);margin-top:6px;white-space:normal}
-.esc-fig{background:#fff;border-radius:10px;padding:6px;margin:8px 0;border:1px solid var(--bd);white-space:normal}
+.esc-m{display:block}
+.esc-mt{padding:0;max-width:100%;overflow-wrap:anywhere;white-space:pre-wrap}
+.esc-mt::before{display:block;font-size:.78em;letter-spacing:.05em;margin-bottom:.15em;color:#ffe28a}
+.esc-m.ia .esc-mt::before{content:'PROFE'}
+.esc-m.me .esc-mt{color:#a9e8ff;text-align:right}.esc-m.me .esc-mt::before{content:'VOS';color:#a9e8ff}
+.esc-board .esc-mav{display:none}
+.esc-board .btn.soft{font-size:.78rem}
+.esc-note{font-size:.8rem;color:rgba(246,242,228,.78);margin-top:6px;white-space:normal}
+.esc-fig{background:#fff;border-radius:10px;padding:6px;margin:8px 0;border:1px solid var(--bd);white-space:normal;color:#222;text-shadow:none}
 .esc-fig svg{display:block;width:100%;height:auto}
 .esc-ask{flex-wrap:wrap}
 .esc-att{min-width:48px;border-radius:12px;border:2px solid #4a2410;background:#fff4de;color:#4a2410;font-size:1.15rem;cursor:pointer;box-shadow:0 2px 0 #4a2410}
@@ -211,7 +220,7 @@ ${clara ? `.esc-${k} .pz-t{color:#8a4b12}.esc-${k} .pz-q b{color:#1f5fa8}.esc-${
 .esc-t1 img{display:block;width:100%;height:100%;object-fit:cover;border-radius:8px}
 .esc-t1 button{position:absolute;top:-9px;right:-9px;width:24px;height:24px;padding:0;border-radius:50%;border:2px solid #4a2410;background:#fff4de;color:#4a2410;font-size:11px;line-height:1;cursor:pointer}
 .esc-ths{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
-.esc-ths img{width:88px;height:88px;object-fit:cover;border-radius:8px;border:1px solid var(--bd)}
+.esc-ths{justify-content:flex-end}.esc-ths img{width:88px;height:88px;object-fit:cover;border-radius:8px;border:2px solid #f6f2e4}
 .esc-warn{flex-basis:100%;font:600 .78rem/1.3 var(--fb);color:#fff4de;text-align:center}
 .esc-info{font:700 .88rem var(--fb);color:#fff4de}
 @media print{.esc,.esc-mini,.esc-chat{display:none!important}}` + cssEscenas();
@@ -223,10 +232,10 @@ ${clara ? `.esc-${k} .pz-t{color:#8a4b12}.esc-${k} .pz-q b{color:#1f5fa8}.esc-${
     const root = document.createElement('section'); root.id = 'escena'; root.className = 'esc'; root.setAttribute('aria-label', 'La Profe Luján');
     root.innerHTML = `<div class="esc-vista"><div class="esc-pz"></div><img class="esc-av" src="${IMG.normal}" alt="La Profe Luján" width="320" height="445" draggable="false"><div class="esc-fr"></div>
       <div class="esc-bub" hidden><span class="esc-bt"></span><button type="button" class="esc-bx" aria-label="Cerrar el mensaje">✕</button></div>
-      <button type="button" class="esc-hide" aria-label="Ocultar la escena" title="Ocultar">▾</button></div><div class="esc-bar"></div>
+      <button type="button" class="esc-hide" aria-label="Ocultar la escena" title="Ocultar">▾</button><button type="button" class="esc-reabrir" hidden>💬 Charla</button></div><div class="esc-bar"></div>
       <div class="esc-ask" hidden><div class="esc-th" hidden></div><button type="button" class="esc-att" aria-label="Adjuntar una foto" title="Adjuntar una foto de tu carpeta o ejercicio">📷</button><input class="esc-q" type="text" maxlength="700" placeholder="Preguntale a la Profe…" aria-label="Preguntale a la Profe" autocomplete="off"><button type="button" class="esc-send" aria-label="Enviar la pregunta">➤</button><input class="esc-file" type="file" accept="image/*" multiple hidden></div>`;
-    const chat = document.createElement('section'); chat.id = 'escena-chat'; chat.className = 'esc-chat'; chat.hidden = true; chat.setAttribute('aria-label', 'Charla con la Profe');
-    chat.innerHTML = `<div class="esc-chat-h"><b>💬 Charla con la Profe</b><span><button type="button" class="esc-lnk" data-c="nueva">🧹 Nueva charla</button><button type="button" class="esc-lnk" data-c="min" aria-label="Minimizar la charla">▾</button></span></div><div class="esc-msgs" aria-live="polite"></div>`;
+    const chat = document.createElement('section'); chat.id = 'escena-chat'; chat.className = 'esc-board'; chat.hidden = true; chat.setAttribute('aria-label', 'Pizarrón: charla con la Profe');
+    chat.innerHTML = `<div class="esc-chat-h"><b>✏️ Charla con la Profe</b><span><button type="button" class="esc-lnk" data-c="nueva">🧹 Nueva</button><button type="button" class="esc-lnk" data-c="min" aria-label="Cerrar el pizarrón" title="Cerrar el pizarrón">✕ Cerrar</button></span></div><div class="esc-msgs" aria-live="polite"></div>`;
     root.querySelector('.esc-q').onkeydown = ev => { if(ev.key === 'Enter' && !ev.isComposing){ ev.preventDefault(); enviar(); } };
     root.querySelector('.esc-send').onclick = () => enviar();
     root.querySelector('.esc-att').onclick = () => { if(!st.busy) root.querySelector('.esc-file').click(); };
@@ -234,10 +243,11 @@ ${clara ? `.esc-${k} .pz-t{color:#8a4b12}.esc-${k} .pz-q b{color:#1f5fa8}.esc-${
     root.querySelector('.esc-th').onclick = ev => { const b = ev.target.closest('[data-x]'); if(b && !st.busy){ st.imgs.splice(+b.dataset.x, 1); pintaFotos(); } };
     chat.onclick = ev => {
       const b = ev.target.closest('[data-c]'); if(!b) return;
-      if(b.dataset.c === 'nueva'){ if(st.busy) return; if(window.ProfeIA) ProfeIA.reiniciar(); chat.querySelector('.esc-msgs').innerHTML = ''; chat.hidden = true; sincChat(); }
-      else { const ms = chat.querySelector('.esc-msgs'); ms.hidden = !ms.hidden; b.textContent = ms.hidden ? '▴' : '▾'; }
+      if(b.dataset.c === 'nueva'){ if(st.busy) return; if(window.ProfeIA) ProfeIA.reiniciar(); chat.querySelector('.esc-msgs').innerHTML = ''; cerrarPizarron(); }
+      else cerrarPizarron();
     };
-    st.chat = chat;
+    root.querySelector('.esc-vista').appendChild(chat); st.chat = chat;
+    root.querySelector('.esc-reabrir').onclick = () => abrirPizarron();
     const mini = document.createElement('button'); mini.type = 'button'; mini.id = 'escena-show'; mini.className = 'esc-mini'; mini.textContent = '🏫 Mostrar a la Profe'; mini.hidden = true;
     root.querySelector('.esc-hide').onclick = () => { lsSet('aula_escena', 'off'); aplicarVisible(); };
     mini.onclick = () => { lsSet('aula_escena', 'on'); aplicarVisible(); };
@@ -247,10 +257,22 @@ ${clara ? `.esc-${k} .pz-t{color:#8a4b12}.esc-${k} .pz-q b{color:#1f5fa8}.esc-${
     st.root = root; st.mini = mini;
     setTimeout(() => { Object.keys(IMG).forEach(k => { if(k !== 'normal'){ const im = new Image(); im.src = IMG[k]; } }); }, 1500);   // se precargan para que el cambio de cara sea instantáneo
   }
-  const aplicarVisible = () => { const off = lsGet('aula_escena') === 'off'; st.root.hidden = off; st.mini.hidden = !off; st.chat.hidden = off || !qc('.esc-msgs').children.length; sincChat(); };
+  const aplicarVisible = () => { const off = lsGet('aula_escena') === 'off'; st.root.hidden = off; st.mini.hidden = !off; sincChat(); };
   const q = s => st.root.querySelector(s);
   const qc = s => st.chat.querySelector(s);
-  const sincChat = () => st.root.classList.toggle('esc-open', !st.chat.hidden && !st.root.hidden);
+  const hayCharla = () => qc('.esc-msgs').children.length > 0;
+  const sincChat = () => { st.root.classList.toggle('esc-chatting', !!st.abierto); st.chat.hidden = !st.abierto; const r = q('.esc-reabrir'); if(r) r.hidden = !!st.abierto || !hayCharla(); };
+  function abrirPizarron(){                                          // al empezar a hablar: se estira la escena, baja el pizarrón y la Profe pasa a la esquina
+    if(st.abierto) return; st.abierto = true; hideBubble(); clearTimeout(st.timer); sincChat(); caminaA();
+    setTimeout(() => { try{ st.root.scrollIntoView({block:'start', behavior:'smooth'}); }catch(e){} }, 80);
+  }
+  function cerrarPizarron(){                                         // vuelve la escena de siempre (la charla queda guardada: botón “💬 Charla”)
+    if(!st.abierto) return; st.abierto = false; sincChat(); caminaA(); base();
+  }
+  function caminaA(){                                                // la Profe cambia de lugar caminando desde el costado
+    const im = q('.esc-av'); if(!im) return; setAv(st.abierto ? 'pensando' : 'normal');
+    im.classList.remove('av-entra-d', 'av-entra-i'); void im.offsetWidth; im.classList.add('av-entra-d');
+  }
 
   /* ---------- avatar y globo de diálogo ---------- */
   function setAv(estado){
@@ -271,7 +293,7 @@ ${clara ? `.esc-${k} .pz-t{color:#8a4b12}.esc-${k} .pz-q b{color:#1f5fa8}.esc-${
   function reaccionar(estado, texto, ms){
     if(!st.root) return; ms = ms || 3200; estado = azar(estado);
     setAv(estado); if(texto) showBubble(texto, ms, false);
-    clearTimeout(st.timer); st.timer = setTimeout(() => { setAv('normal'); base(); }, ms);
+    clearTimeout(st.timer); st.timer = setTimeout(() => { setAv(st.abierto ? 'pensando' : 'normal'); base(); }, ms);
   }
 
   /* ---------- widgets ---------- */
@@ -413,18 +435,18 @@ ${clara ? `.esc-${k} .pz-t{color:#8a4b12}.esc-${k} .pz-q b{color:#1f5fa8}.esc-${
   function addMsg(rol){
     const d = document.createElement('div'); d.className = 'esc-m ' + rol;
     d.innerHTML = (rol === 'ia' ? `<img class="esc-mav" src="${IMG.normal}" alt="" width="34" height="34">` : '') + '<div class="esc-mt"></div>';
-    qc('.esc-msgs').appendChild(d); st.chat.hidden = false; qc('.esc-msgs').hidden = false; sincChat();
+    qc('.esc-msgs').appendChild(d); qc('.esc-msgs').hidden = false; sincChat();
     return d.querySelector('.esc-mt');
   }
   const bajar = () => { const m = qc('.esc-msgs'); m.scrollTop = m.scrollHeight; };
   async function enviar(){
     if(st.busy || !window.ProfeIA) return;
     const inp = q('.esc-q'), t = inp.value.trim(), imgs = st.imgs.slice(); if(!t && !imgs.length) return;
+    abrirPizarron();
     inp.value = ''; st.imgs = []; pintaFotos(); st.busy = true; q('.esc-send').disabled = true; q('.esc-att').disabled = true;
     const me = addMsg('me'); me.textContent = t;
     if(imgs.length){ const w = document.createElement('div'); w.className = 'esc-ths'; imgs.forEach(im => { const i = document.createElement('img'); i.src = im.url; i.alt = 'Foto adjunta'; w.appendChild(i); }); me.appendChild(w); }
     const el = addMsg('ia'); el.textContent = imgs.length ? '⏳ Mirando tu foto…' : '⏳ Pensando…'; bajar();
-    try{ st.chat.scrollIntoView({block:'nearest', behavior:'smooth'}); }catch(e){}
     clearTimeout(st.timer); clearTimeout(st.t2);
     showBubble(imgs.length ? 'A ver esa foto… 👀' : 'Dejame pensarlo con vos… ✏️', 0, false);
     setAv(imgs.length ? 'sorpresa' : 'pensando');
@@ -462,7 +484,7 @@ ${clara ? `.esc-${k} .pz-t{color:#8a4b12}.esc-${k} .pz-q b{color:#1f5fa8}.esc-${
   /* ---------- se mantiene arriba de #main aunque cada pestaña se redibuje ---------- */
   function sync(){
     const main = document.getElementById('main'); if(!main || !st.root) return;
-    if(main.firstElementChild !== st.root) main.prepend(st.root, st.chat, st.mini);
+    if(main.firstElementChild !== st.root) main.prepend(st.root, st.mini);
     const i = info(), t = document.body.dataset.tab || '', key = [modo(), i.cid, i.aviso, i.prof, modo() === 'materiales' ? mats().map(m => m.id + (m.title || '')).join(',') : ''].join('|');
     aplicarVisible();
     if(key !== st.key){ st.key = key; paint(); }
